@@ -285,3 +285,22 @@ type ScanModeConfig struct {
 	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at" db:"updated_at"`
 }
+
+// GovernorAction tracks automated actions for the Safety Governor
+type GovernorAction struct {
+	ID                int       `json:"id" db:"id"`
+	ActionID          string    `json:"action_id" db:"action_id"`
+	ActionName        string    `json:"action_name" db:"action_name"`
+	Target            string    `json:"target" db:"target"`
+	Reasoning         string    `json:"reasoning" db:"reasoning"`
+	Requester         string    `json:"requester" db:"requester"`
+	Status            string    `json:"status" db:"status"` // approved, blocked, manual_ack_required
+	RequiresApproval  bool      `json:"requires_approval" db:"requires_approval"`
+	Approved          bool      `json:"approved" db:"approved"`
+	RequiresManualAck bool      `json:"requires_manual_ack" db:"requires_manual_ack"`
+	BlockReason       string    `json:"block_reason" db:"block_reason"`
+	ExecutionTime     int64     `json:"execution_time" db:"execution_time"` // milliseconds
+	Metadata          string    `json:"metadata" db:"metadata"`             // JSON string
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+}

@@ -15,10 +15,12 @@ export function AgentEventProvider({ children }) {
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef(null)
   const eventQueueRef = useRef([])
+  const reconnectAttemptsRef = useRef(0)
   const maxEvents = 100
 
   const connect = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    // ENFORCE WSS:// protocol for security compliance
+    const protocol = 'wss:' // Always use secure WebSocket per AGENTS.md directives
     const wsUrl = `${protocol}//${window.location.host}/api/v2/ws/events`
     
     const websocket = new WebSocket(wsUrl)
@@ -26,6 +28,7 @@ export function AgentEventProvider({ children }) {
     websocket.onopen = () => {
       console.log('AgentEvent WebSocket connected')
       setIsConnected(true)
+      reconnectAttemptsRef.current = 0 // Reset reconnection attempts on successful connect
     }
     
     websocket.onmessage = (event) => {
@@ -54,10 +57,18 @@ export function AgentEventProvider({ children }) {
       setIsConnected(false)
       wsRef.current = null
       
+      // EXPONENTIAL BACKOFF for reconnection per AGENTS.md directives
+      reconnectAttemptsRef.current++
+      const baseDelay = 1000 // 1 second base
+      const maxDelay = 30000 // 30 second max
+      const exponentialDelay = Math.min(baseDelay * Math.pow(2, reconnectAttemptsRef.current - 1), maxDelay)
+      
+      console.log(`AgentEvent WebSocket reconnecting in ${exponentialDelay}ms (attempt ${reconnectAttemptsRef.current})`)
+      
       setTimeout(() => {
         const newWs = connect()
         if (newWs) wsRef.current = newWs
-      }, 3000)
+      }, exponentialDelay)
     }
     
     websocket.onerror = (error) => {

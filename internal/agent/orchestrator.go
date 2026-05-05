@@ -43,13 +43,7 @@ type Orchestrator struct {
 	}
 	metrics *platform.MetricsCollector
 	// Safety Governor - Permanent Safety Gates
-	safetyGovernor struct {
-		maxAutomatedBlocksPerHour int
-		currentBlockCount         int
-		lastBlockReset            time.Time
-		requireManualAck          bool
-		manualAckPending          []string
-	}
+	safetyGovernor *engine.SafetyGovernor
 }
 
 type OrchestrationRule struct {
@@ -68,29 +62,19 @@ var (
 )
 
 func NewOrchestrator(eventBus *bus.EventBus, dispatcher *engine.Dispatcher, db *sql.DB) *Orchestrator {
-	now := time.Now()
+	// Create Safety Governor instance - pass nil for now, will be initialized later
+	safetyGov := engine.NewSafetyGovernor(nil)
+
 	return &Orchestrator{
-		eventBus:      eventBus,
-		dispatcher:    dispatcher,
-		db:            db,
-		stopChan:      make(chan struct{}),
-		rules:         make([]OrchestrationRule, 0),
-		agentID:       fmt.Sprintf("orchestrator_%d", time.Now().Unix()),
-		lastExecution: make(map[string]time.Time),
-		metrics:       platform.GetGlobalMetrics(),
-		safetyGovernor: struct {
-			maxAutomatedBlocksPerHour int
-			currentBlockCount         int
-			lastBlockReset            time.Time
-			requireManualAck          bool
-			manualAckPending          []string
-		}{
-			maxAutomatedBlocksPerHour: 5, // Safety Governor: Max 5 automated blocks per hour
-			currentBlockCount:         0,
-			lastBlockReset:            now,
-			requireManualAck:          true, // Require manual ACK after limit reached
-			manualAckPending:          make([]string, 0),
-		},
+		eventBus:       eventBus,
+		dispatcher:     dispatcher,
+		db:             db,
+		stopChan:       make(chan struct{}),
+		rules:          make([]OrchestrationRule, 0),
+		agentID:        fmt.Sprintf("orchestrator_%d", time.Now().Unix()),
+		lastExecution:  make(map[string]time.Time),
+		metrics:        platform.GetGlobalMetrics(),
+		safetyGovernor: safetyGov,
 	}
 }
 
@@ -135,6 +119,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	close(o.stopChan)
 	o.stopChan = make(chan struct{})
 
+	// Start Safety Governor
+	o.safetyGovernor.Start()
+
 	// Start daily report generation goroutine
 	o.wg.Add(1)
 	go o.dailyReportGenerator()
@@ -154,6 +141,9 @@ func (o *Orchestrator) Stop() {
 	close(o.stopChan)
 	o.wg.Wait()
 	o.running = false
+
+	// Stop Safety Governor
+	o.safetyGovernor.Stop()
 
 	log.Println("Orchestrator: Stopped")
 }
@@ -1632,40 +1622,50 @@ func (o *Orchestrator) dailyReportGenerator() {
 	}
 }
 
-// checkSafetyGovernor validates actions against safety limits
+// checkSafetyGovernor validates actions against safety limits using new Safety Governor
 func (o *Orchestrator) checkSafetyGovernor(action, target string) (bool, string) {
-	// Safety Governor logic - check if action should be allowed
-	if o.safetyGovernor.currentBlockCount >= o.safetyGovernor.maxAutomatedBlocksPerHour {
-		if time.Since(o.safetyGovernor.lastBlockReset) > time.Hour {
-			// Reset counter after hour
-			o.safetyGovernor.currentBlockCount = 0
-			o.safetyGovernor.lastBlockReset = time.Now()
-			log.Printf("🛡️ SAFETY GOVERNOR: Reset hourly block counter, allowing action '%s' on target '%s'", action, target)
-			return true, ""
-		}
-		log.Printf("🛡️ SAFETY GOVERNOR: Blocking action '%s' on target '%s' - hourly limit exceeded", action, target)
-
-		// Emit ManualACKRequired event for 6th block rejection
-		manualAckEvent := bus.Event{
-			Type:   bus.EventTypeManualACKRequired,
-			Source: "orchestrator",
-			Target: target,
-			Payload: map[string]interface{}{
-				"action_name": action,
-				"blocks_used": o.safetyGovernor.currentBlockCount,
-				"max_blocks":  o.safetyGovernor.maxAutomatedBlocksPerHour,
-				"reasoning":   "6th automated block rejected - manual acknowledgement required",
-				"timestamp":   time.Now().Unix(),
-			},
-		}
-		o.eventBus.Publish(manualAckEvent)
-
-		return false, "Hourly automated block limit exceeded"
+	// Use new Safety Governor to validate action
+	actionRequest := engine.ActionRequest{
+		ActionName:       action,
+		Target:           target,
+		Reasoning:        "Automated security action",
+		RequiresApproval: true, // Default to requiring approval for safety
+		Requester:        o.agentID,
+		Timestamp:        time.Now(),
 	}
 
-	// Track the action for safety monitoring
-	log.Printf("🛡️ SAFETY GOVERNOR: Allowing action '%s' on target '%s' (%d/%d blocks used)",
-		action, target, o.safetyGovernor.currentBlockCount, o.safetyGovernor.maxAutomatedBlocksPerHour)
+	response, err := o.safetyGovernor.RequestAction(actionRequest)
+	if err != nil {
+		log.Printf(" SAFETY GOVERNOR: Error checking action '%s' on target '%s': %v", action, target, err)
+		return false, err.Error()
+	}
+
+	if !response.Approved {
+		log.Printf(" SAFETY GOVERNOR: BLOCKING action '%s' on target '%s' - %s", action, target, response.Reason)
+
+		// If manual ACK is required, publish to dashboard
+		if response.RequiresManualAck {
+			o.eventBus.Publish(bus.Event{
+				Type:   bus.EventTypeActionRequest,
+				Source: "safety_governor",
+				Target: "dashboard",
+				Payload: map[string]interface{}{
+					"action_name":       action,
+					"target":            target,
+					"reasoning":         response.Reason,
+					"requires_approval": true,
+					"requester":         o.agentID,
+					"timestamp":         time.Now().Unix(),
+					"governor_block":    true,
+				},
+			})
+		}
+
+		return false, response.Reason
+	}
+
+	// Action approved by Safety Governor
+	log.Printf(" SAFETY GOVERNOR: Allowing action '%s' on target '%s' - %s", action, target, response.Reason)
 	return true, ""
 }
 

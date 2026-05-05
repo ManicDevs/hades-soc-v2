@@ -31,6 +31,17 @@ type WebSocketMessage struct {
 	UserID    *int        `json:"user_id,omitempty"`
 }
 
+// ActionRequest represents an action request with Manual ACK support
+type ActionRequest struct {
+	ActionName       string                 `json:"action_name"`
+	Target           string                 `json:"target"`
+	Reasoning        string                 `json:"reasoning"`
+	RequiresApproval bool                   `json:"requires_approval"`
+	Requester        string                 `json:"requester"`
+	Timestamp        time.Time              `json:"timestamp"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+}
+
 // RealTimeUpdate represents real-time data updates
 type RealTimeUpdate struct {
 	Type      string      `json:"type"`
