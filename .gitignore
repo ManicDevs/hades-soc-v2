@@ -220,3 +220,8 @@ web/src/assets/admin_portal_keys.pem
 **/production_secrets.env
 **/kubernetes_admin.conf
 **/aws_vault_credentials.json
+
+# Generated reports (ignore generated reports, preserve template)
+reports/daily_report_*.md
+reports/simulation_report_*.json
+!reports/daily_report_template.md
