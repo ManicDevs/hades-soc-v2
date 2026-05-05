@@ -5,11 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hades-v2/internal/database"
 	"log"
 	"sync"
 	"time"
-
-	"hades-v2/internal/database"
 )
 
 // DatabaseConfig holds database configuration
