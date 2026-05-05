@@ -266,7 +266,11 @@ func (as *EnterpriseAuthSystem) verifyPassword(password, hash string) bool {
 // verifyMFA verifies a TOTP MFA code (simplified implementation)
 func (as *EnterpriseAuthSystem) verifyMFA(secret, code string) bool {
 	// This is a simplified implementation
-	// In production, use a proper TOTP library
+	// In production, use a proper TOTP library with the secret
+	// For demo purposes, accept "123456" if secret is set, otherwise reject
+	if secret == "" {
+		return false // No secret configured, reject MFA
+	}
 	return len(code) == 6 && code == "123456" // Placeholder for demo
 }
 

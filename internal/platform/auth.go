@@ -177,8 +177,12 @@ func (am *AuthManager) ValidateSession(ctx context.Context, token string) (*User
 		return nil, fmt.Errorf("hades.platform.auth: session expired")
 	}
 
-	user, exists := am.users[session.UserID]
-	if !exists || !user.IsActive {
+	user, err := am.GetUser(ctx, session.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("hades.platform.auth: user not found or inactive")
+	}
+
+	if !user.IsActive {
 		return nil, fmt.Errorf("hades.platform.auth: user not found or inactive")
 	}
 
