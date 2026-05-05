@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hades-v2/internal/api/versioning"
@@ -25,6 +26,7 @@ type Server struct {
 	versionInt             *versioning.ServerIntegration
 	database               database.Database
 	workerPool             *workers.WorkerPool
+	wsManager              *websocket.WebSocketManager
 	aiEndpoints            *AIEndpoints
 	analyticsEndpoints     *AnalyticsEndpoints
 	threatHuntingEndpoints *ThreatHuntingEndpoints
@@ -35,6 +37,7 @@ type Server struct {
 	incidentEndpoints      *IncidentEndpoints
 	threatEndpoints        *ThreatEndpoints
 	kubernetesEndpoints    *KubernetesEndpoints
+	governorEndpoints      *GovernorEndpoints
 }
 
 type Response struct {
@@ -184,6 +187,21 @@ func NewServer(port int) *Server {
 		log.Printf("Warning: Failed to create Kubernetes endpoints: %v", err)
 	}
 
+	// Create WebSocket manager
+	wsManager := websocket.NewWebSocketManager(db)
+
+	// Create governor endpoints
+	dbManager := database.GetManager()
+	// Initialize the database manager
+	if err := dbManager.Initialize(context.Background()); err != nil {
+		log.Printf("Warning: Failed to initialize database manager: %v", err)
+	}
+
+	governorEndpoints, err := NewGovernorEndpoints(dbManager, wsManager)
+	if err != nil {
+		log.Printf("Warning: Failed to create governor endpoints: %v", err)
+	}
+
 	s := &Server{
 		router:                 mux.NewRouter(),
 		port:                   port,
@@ -191,6 +209,7 @@ func NewServer(port int) *Server {
 		versionInt:             versionInt,
 		database:               db,
 		workerPool:             workerPool,
+		wsManager:              wsManager,
 		aiEndpoints:            aiEndpoints,
 		analyticsEndpoints:     analyticsEndpoints,
 		threatHuntingEndpoints: threatHuntingEndpoints,
@@ -201,6 +220,7 @@ func NewServer(port int) *Server {
 		incidentEndpoints:      incidentEndpoints,
 		threatEndpoints:        threatEndpoints,
 		kubernetesEndpoints:    kubernetesEndpoints,
+		governorEndpoints:      governorEndpoints,
 	}
 	s.setupRoutes()
 
@@ -296,6 +316,16 @@ func (s *Server) setupRoutes() {
 	if s.kubernetesEndpoints != nil {
 		// Mount Kubernetes endpoints router
 		s.router.PathPrefix("/api/v2/kubernetes").Handler(s.kubernetesEndpoints.GetRouter())
+	}
+
+	// Safety Governor endpoints
+	if s.governorEndpoints != nil {
+		// Mount governor endpoints router with JWT protection
+		governorRouter := s.governorEndpoints.GetRouter()
+		// Apply JWT middleware for admin access
+		s.router.PathPrefix("/api/v2/governor").Handler(s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		// Start the safety governor monitoring
+		s.governorEndpoints.Start()
 	}
 
 	// API v3 routes (beta) - commented out for now

@@ -101,12 +101,60 @@ func (wsm *WebSocketManager) subscribeToEventBus() {
 		return nil
 	})
 
+	bus.Default().Subscribe(bus.EventTypeActionRequest, func(event bus.Event) error {
+		// Check if this is a governor block event
+		if governorBlock, ok := event.Payload["governor_block"].(bool); ok && governorBlock {
+			// Send as GOVERNOR_INTERCEPT message
+			wsm.broadcastGovernorIntercept(event)
+		} else {
+			// Send as regular event
+			wsm.broadcastEvent(event)
+		}
+		return nil
+	})
+
 	bus.Default().Subscribe(bus.EventTypeLogEvent, func(event bus.Event) error {
 		wsm.broadcastEvent(event)
 		return nil
 	})
 
 	log.Println("WebSocketManager: Subscribed to agent events")
+}
+
+// broadcastGovernorIntercept sends a governor intercept message to all connected WebSocket clients
+func (wsm *WebSocketManager) broadcastGovernorIntercept(event bus.Event) {
+	// Create GOVERNOR_INTERCEPT message
+	interceptMessage := WebSocketMessage{
+		Type: "GOVERNOR_INTERCEPT",
+		Data: map[string]interface{}{
+			"action_name":       event.Payload["action_name"],
+			"target":            event.Payload["target"],
+			"reasoning":         event.Payload["reasoning"],
+			"requires_approval": event.Payload["requires_approval"],
+			"requester":         event.Payload["requester"],
+			"timestamp":         event.Payload["timestamp"],
+			"block_reason":      event.Payload["block_reason"],
+			"source":            event.Source,
+		},
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(interceptMessage)
+	if err != nil {
+		log.Printf("Failed to marshal governor intercept message for WebSocket broadcast: %v", err)
+		return
+	}
+
+	wsm.mu.Lock()
+	defer wsm.mu.Unlock()
+
+	for conn := range wsm.connections {
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("Failed to send governor intercept to WebSocket client: %v", err)
+			conn.Close()
+			delete(wsm.connections, conn)
+		}
+	}
 }
 
 // broadcastEvent sends an event to all connected WebSocket clients

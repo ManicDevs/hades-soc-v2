@@ -147,7 +147,7 @@ func (te *ThreatEndpoints) handleSimulations(w http.ResponseWriter, r *http.Requ
 }
 
 // handleGetSimulations handles getting simulations
-func (te *ThreatEndpoints) handleGetSimulations(w http.ResponseWriter, r *http.Request) {
+func (te *ThreatEndpoints) handleGetSimulations(w http.ResponseWriter, _ *http.Request) {
 	simulations := te.modelingEngine.GetSimulations()
 
 	response := map[string]interface{}{

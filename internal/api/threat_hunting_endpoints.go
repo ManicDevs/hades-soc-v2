@@ -66,7 +66,7 @@ func (the *ThreatHuntingEndpoints) handleHunts(w http.ResponseWriter, r *http.Re
 }
 
 // getActiveHunts returns all active hunts
-func (the *ThreatHuntingEndpoints) getActiveHunts(w http.ResponseWriter, r *http.Request) {
+func (the *ThreatHuntingEndpoints) getActiveHunts(w http.ResponseWriter, _ *http.Request) {
 	activeHunts := the.threatHuntingEngine.GetActiveHunts()
 
 	response := map[string]interface{}{

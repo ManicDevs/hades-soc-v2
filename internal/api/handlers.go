@@ -15,9 +15,10 @@ import (
 
 // Mock data for demonstration
 var mockUsers = []User{
-	{ID: 1, Username: "dev", Email: "dev@hades-toolkit.com", Role: "Developer", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write", "dev", "user_management"}},
-	{ID: 2, Username: "jsmith", Email: "jsmith@hades-toolkit.com", Role: "Security Analyst", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write"}},
-	{ID: 3, Username: "mrodriguez", Email: "mrodriguez@hades-toolkit.com", Role: "Security Engineer", Status: "active", LastLogin: time.Now().Add(-24 * time.Hour), Permissions: []string{"read", "write"}},
+	{ID: 1, Username: "admin", Email: "admin@hades-toolkit.com", Role: "Administrator", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write", "admin"}},
+	{ID: 2, Username: "dev", Email: "dev@hades-toolkit.com", Role: "Developer", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write", "dev", "user_management"}},
+	{ID: 3, Username: "jsmith", Email: "jsmith@hades-toolkit.com", Role: "Security Analyst", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write"}},
+	{ID: 4, Username: "mrodriguez", Email: "mrodriguez@hades-toolkit.com", Role: "Security Engineer", Status: "active", LastLogin: time.Now().Add(-24 * time.Hour), Permissions: []string{"read", "write"}},
 	{ID: 4, Username: "sbrown", Email: "sbrown@hades-toolkit.com", Role: "Auditor", Status: "inactive", LastLogin: time.Now().Add(-7 * 24 * time.Hour), Permissions: []string{"read"}},
 }
 
@@ -65,7 +66,8 @@ var jwtSecret = []byte("hades-toolkit-secret-key")
 // Environment-based authentication
 var mockPasswords = map[string]string{
 	// Development environment credentials only
-	"dev": "dev123", // Dev access credentials for development
+	"dev":   "dev123",   // Dev access credentials for development
+	"admin": "admin123", // Admin access credentials for testing
 	// Production users - no default passwords
 	"jsmith":     "secureUserPass456!", // This should be a bcrypt hash in production
 	"mrodriguez": "secureUserPass789!", // This should be a bcrypt hash in production
@@ -124,13 +126,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	// Mock token refresh
 	user := User{
-		ID:          1,
-		Username:    "admin",
-		Email:       "admin@hades-toolkit.com",
-		Role:        "Administrator",
-		Status:      "active",
-		LastLogin:   time.Now(),
-		Permissions: []string{"read", "write", "admin"},
+		ID:       1,
+		Username: "admin",
+		Role:     "Administrator",
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

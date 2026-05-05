@@ -380,14 +380,14 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 	}
 
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
-	var oldestApprovedStr string
+	var oldestApprovedStr sql.NullString
 	err = dm.primary.QueryRowContext(ctx, resetQuery, true, oneHourAgo).Scan(&oldestApprovedStr)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("failed to get oldest approved action: %w", err)
 	}
 
-	if oldestApprovedStr != "" {
-		oldestApproved, err := time.Parse("2006-01-02 15:04:05", oldestApprovedStr)
+	if oldestApprovedStr.Valid && oldestApprovedStr.String != "" {
+		oldestApproved, err := time.Parse("2006-01-02 15:04:05", oldestApprovedStr.String)
 		if err != nil {
 			// Try parsing with different formats
 			layouts := []string{
@@ -396,7 +396,7 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 				"2006-01-02 15:04:05.999999999-07:00",
 			}
 			for _, layout := range layouts {
-				if oldestApproved, err = time.Parse(layout, oldestApprovedStr); err == nil {
+				if oldestApproved, err = time.Parse(layout, oldestApprovedStr.String); err == nil {
 					break
 				}
 			}
@@ -421,6 +421,136 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 	}
 
 	return stats, nil
+}
+
+// GetGovernorActionByID retrieves a specific governor action by its action_id
+func (dm *DatabaseManager) GetGovernorActionByID(ctx context.Context, actionID string) (*GovernorAction, error) {
+	var query string
+
+	if dm.config.UseSQLite {
+		query = `
+		SELECT id, action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		FROM governor_actions 
+		WHERE action_id = ?
+		`
+	} else {
+		query = `
+		SELECT id, action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		FROM governor_actions 
+		WHERE action_id = ?
+		`
+	}
+
+	action := &GovernorAction{}
+	err := dm.primary.QueryRowContext(ctx, query, actionID).Scan(
+		&action.ID, &action.ActionID, &action.ActionName, &action.Target,
+		&action.Reasoning, &action.Requester, &action.Status,
+		&action.RequiresApproval, &action.Approved, &action.RequiresManualAck,
+		&action.BlockReason, &action.ExecutionTime, &action.Metadata,
+		&action.CreatedAt, &action.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Action not found
+		}
+		return nil, fmt.Errorf("failed to get governor action by ID: %w", err)
+	}
+
+	return action, nil
+}
+
+// UpdateGovernorAction updates an existing governor action
+func (dm *DatabaseManager) UpdateGovernorAction(ctx context.Context, action *GovernorAction) error {
+	var query string
+
+	if dm.config.UseSQLite {
+		query = `
+		UPDATE governor_actions 
+		SET action_name = ?, target = ?, reasoning = ?, requester = ?, status = ?,
+			requires_approval = ?, approved = ?, requires_manual_ack = ?, block_reason = ?,
+			execution_time = ?, metadata = ?, updated_at = ?
+		WHERE id = ?
+		`
+	} else {
+		query = `
+		UPDATE governor_actions 
+		SET action_name = ?, target = ?, reasoning = ?, requester = ?, status = ?,
+			requires_approval = ?, approved = ?, requires_manual_ack = ?, block_reason = ?,
+			execution_time = ?, metadata = ?, updated_at = ?
+		WHERE id = ?
+		`
+	}
+
+	_, err := dm.primary.ExecContext(ctx, query,
+		action.ActionName, action.Target, action.Reasoning, action.Requester, action.Status,
+		action.RequiresApproval, action.Approved, action.RequiresManualAck, action.BlockReason,
+		action.ExecutionTime, action.Metadata, action.UpdatedAt, action.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update governor action: %w", err)
+	}
+
+	return nil
+}
+
+// GetPendingActions returns actions that require manual approval
+func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAction, error) {
+	var query string
+
+	if dm.config.UseSQLite {
+		query = `
+		SELECT id, action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		FROM governor_actions 
+		WHERE status = ? OR status = ?
+		ORDER BY created_at DESC
+		`
+	} else {
+		query = `
+		SELECT id, action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		FROM governor_actions 
+		WHERE status = ? OR status = ?
+		ORDER BY created_at DESC
+		`
+	}
+
+	rows, err := dm.primary.QueryContext(ctx, query,
+		GovernorActionStatusManualAckRequired, GovernorActionStatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending actions: %w", err)
+	}
+	defer rows.Close()
+
+	var actions []*GovernorAction
+	for rows.Next() {
+		action := &GovernorAction{}
+		err := rows.Scan(
+			&action.ID, &action.ActionID, &action.ActionName, &action.Target,
+			&action.Reasoning, &action.Requester, &action.Status,
+			&action.RequiresApproval, &action.Approved, &action.RequiresManualAck,
+			&action.BlockReason, &action.ExecutionTime, &action.Metadata,
+			&action.CreatedAt, &action.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan pending action: %w", err)
+		}
+		actions = append(actions, action)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating pending actions: %w", err)
+	}
+
+	return actions, nil
 }
 
 // CleanupOldGovernorActions removes actions older than the specified duration

@@ -241,7 +241,7 @@ func (ae *AIEndpoints) handleBaselineManagement(w http.ResponseWriter, r *http.R
 }
 
 // getBaseline returns current baseline information
-func (ae *AIEndpoints) getBaseline(w http.ResponseWriter, r *http.Request) {
+func (ae *AIEndpoints) getBaseline(w http.ResponseWriter, _ *http.Request) {
 	// In real implementation, return baseline data
 	response := map[string]interface{}{
 		"baseline_id":  "baseline_001",

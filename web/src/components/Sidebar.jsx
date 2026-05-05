@@ -1,10 +1,11 @@
 import React from 'react'
-import { Shield, Activity, AlertTriangle, Users, Settings, Home, Lock, Database, Globe, Code, Brain, BarChart3, Target, Hash, Atom, Server, FileText, ShieldCheck } from 'lucide-react'
+import { Shield, Activity, AlertTriangle, Users, Settings, Home, Lock, Database, Globe, Code, Brain, BarChart3, Target, Hash, Atom, Server, FileText, ShieldCheck, CheckCircle } from 'lucide-react'
 
 function Sidebar({ isOpen, onToggle, user }) {
   const menuItems = [
     { icon: Home, label: 'Dashboard', path: '/dashboard', active: true },
     { icon: Shield, label: 'Security', path: '/security' },
+    { icon: CheckCircle, label: 'Approval Queue', path: '/approval-queue' },
     { icon: Lock, label: 'Threats', path: '/threats' },
     { icon: Users, label: 'Users', path: '/users' },
     { icon: Database, label: 'Database', path: '/database' },

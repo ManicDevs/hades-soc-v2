@@ -531,7 +531,7 @@ func parseSearchRequest(r *http.Request) SearchRequest {
 	}
 }
 
-func applyFilters(data []ThreatV2, filters []FilterRequest) []ThreatV2 {
+func applyFilters(data []ThreatV2, _ []FilterRequest) []ThreatV2 {
 	// Implement filtering logic
 	return data // Placeholder
 }

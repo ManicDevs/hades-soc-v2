@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
+import ApprovalQueue from './components/ApprovalQueue'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Security from './pages/Security'
@@ -73,6 +74,7 @@ function AppContent() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard user={currentUser} />} />
             <Route path="/security" element={<Security user={currentUser} />} />
+            <Route path="/approval-queue" element={<ApprovalQueue user={currentUser} />} />
             <Route path="/threats" element={<Threats user={currentUser} />} />
             <Route path="/users" element={<Users user={currentUser} />} />
             <Route path="/dev" element={<Dev user={currentUser} />} />

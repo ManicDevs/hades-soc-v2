@@ -71,7 +71,7 @@ func (ie *IncidentEndpoints) handleIncidents(w http.ResponseWriter, r *http.Requ
 }
 
 // handleGetIncidents handles getting incidents
-func (ie *IncidentEndpoints) handleGetIncidents(w http.ResponseWriter, r *http.Request) {
+func (ie *IncidentEndpoints) handleGetIncidents(w http.ResponseWriter, _ *http.Request) {
 	incidents := ie.incidentManager.GetActiveIncidents()
 
 	response := map[string]interface{}{

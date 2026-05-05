@@ -266,7 +266,7 @@ func (ae *AnalyticsEndpoints) handleStreamProcessing(w http.ResponseWriter, r *h
 }
 
 // getStreamStatus returns stream processing status
-func (ae *AnalyticsEndpoints) getStreamStatus(w http.ResponseWriter, r *http.Request) {
+func (ae *AnalyticsEndpoints) getStreamStatus(w http.ResponseWriter, _ *http.Request) {
 	status := ae.analyticsEngine.GetStreamStatus()
 	WriteJSONResponse(w, status)
 }
