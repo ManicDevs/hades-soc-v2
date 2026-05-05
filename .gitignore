@@ -1,6 +1,8 @@
 # Binaries
 hades
 hades-*
+sentinel
+sentinel-*
 *.exe
 *.exe~
 *.dll
