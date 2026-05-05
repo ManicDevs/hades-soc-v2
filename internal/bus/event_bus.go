@@ -32,6 +32,7 @@ const (
 
 	// Authentication & Security Event Types
 	EventTypeAuthFailure            EventType = "auth.failure"
+	EventTypeManualACKRequired      EventType = "manual.ack.required"
 	EventTypeSecurityUpgradeRequest EventType = "security.upgrade.request"
 
 	// Autonomous Cascade Event Types

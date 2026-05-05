@@ -119,7 +119,10 @@ func (os *OSINTScanner) publishIPDiscoveryEvents() {
 					WithMetadata("finding_type", finding.Type).
 					WithMetadata("confidence", finding.Confidence)
 
-				envelope, _ := types.WrapEvent(types.EventTypeNewAsset, assetEvent)
+				envelope, err := types.WrapEvent(types.EventTypeNewAsset, assetEvent)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap new asset event: %v\n", err)
+				}
 				bus.Default().Publish(bus.Event{
 					Type:    bus.EventType(envelope.Type),
 					Source:  assetEvent.SourceModule,
@@ -130,7 +133,10 @@ func (os *OSINTScanner) publishIPDiscoveryEvents() {
 				// Publish LogEvent with reasoning
 				reasoning := fmt.Sprintf("Discovered new asset IP %s from %s OSINT scan. This IP will trigger recon-to-scan cascade.", ip, os.target)
 				logEvent := types.NewLogEvent("osint_scanner", fmt.Sprintf("New asset discovered: %s", ip), reasoning)
-				logEnvelope, _ := types.WrapEvent(types.EventTypeLog, logEvent)
+				logEnvelope, err := types.WrapEvent(types.EventTypeLog, logEvent)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap log event: %v\n", err)
+				}
 				bus.Default().Publish(bus.Event{
 					Type:    bus.EventType(logEnvelope.Type),
 					Source:  logEvent.SourceModule,

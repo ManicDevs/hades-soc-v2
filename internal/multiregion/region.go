@@ -251,11 +251,8 @@ func (hc *HealthChecker) Start() {
 	ticker := time.NewTicker(hc.interval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			hc.checkAllRegions()
-		}
+	for range ticker.C {
+		hc.checkAllRegions()
 	}
 }
 

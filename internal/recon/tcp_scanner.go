@@ -216,6 +216,8 @@ func (ts *TCPScanner) scanPort(ctx context.Context, port int) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		fmt.Printf("Warning: failed to close connection: %v\n", err)
+	}
 	return true
 }

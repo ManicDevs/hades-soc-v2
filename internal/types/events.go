@@ -32,7 +32,8 @@ const (
 	EventTypeThreat EventType = "threat.detected"
 
 	// Action Requests
-	EventTypeActionRequest EventType = "action.request"
+	EventTypeActionRequest          EventType = "action.request"
+	EventTypeSecurityUpgradeRequest EventType = "security.upgrade.request"
 
 	// Logging & Reasoning
 	EventTypeLog EventType = "log.event"

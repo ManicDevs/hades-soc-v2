@@ -168,7 +168,9 @@ func (dd *DistributedDatabase) initReplicas() error {
 		if err := db.PingContext(ctx); err != nil {
 			log.Printf("Failed to ping replica %s: %v", replica.ID, err)
 			dd.config.Replicas[i].Healthy = false
-			db.Close()
+			if err := db.Close(); err != nil {
+				log.Printf("Warning: failed to close database connection: %v", err)
+			}
 			continue
 		}
 

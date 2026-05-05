@@ -292,7 +292,7 @@ func (w *Worker) updateTask(task database.WorkerTask) {
 }
 
 // Task execution methods
-func (w *Worker) executeThreatScan(task database.WorkerTask) error {
+func (w *Worker) executeThreatScan(_ database.WorkerTask) error {
 	// Simulate threat scanning
 	log.Printf("Worker %s performing threat scan", w.Name)
 	time.Sleep(2 * time.Second)
@@ -306,7 +306,7 @@ func (w *Worker) executeThreatScan(task database.WorkerTask) error {
 	return nil
 }
 
-func (w *Worker) executePolicyCheck(task database.WorkerTask) error {
+func (w *Worker) executePolicyCheck(_ database.WorkerTask) error {
 	// Simulate policy checking
 	log.Printf("Worker %s checking security policies", w.Name)
 	time.Sleep(1 * time.Second)
@@ -319,7 +319,7 @@ func (w *Worker) executePolicyCheck(task database.WorkerTask) error {
 	return nil
 }
 
-func (w *Worker) executeBackup(task database.WorkerTask) error {
+func (w *Worker) executeBackup(_ database.WorkerTask) error {
 	// Simulate backup process
 	log.Printf("Worker %s performing backup", w.Name)
 	time.Sleep(5 * time.Second)
@@ -333,7 +333,7 @@ func (w *Worker) executeBackup(task database.WorkerTask) error {
 	return nil
 }
 
-func (w *Worker) executeCleanup(task database.WorkerTask) error {
+func (w *Worker) executeCleanup(_ database.WorkerTask) error {
 	// Simulate cleanup process
 	log.Printf("Worker %s performing cleanup", w.Name)
 	time.Sleep(1 * time.Second)
@@ -347,7 +347,7 @@ func (w *Worker) executeCleanup(task database.WorkerTask) error {
 	return nil
 }
 
-func (w *Worker) executeNotification(task database.WorkerTask) error {
+func (w *Worker) executeNotification(_ database.WorkerTask) error {
 	// Simulate notification sending
 	log.Printf("Worker %s sending notification", w.Name)
 	time.Sleep(500 * time.Millisecond)
@@ -361,7 +361,7 @@ func (w *Worker) executeNotification(task database.WorkerTask) error {
 	return nil
 }
 
-func (w *Worker) executeMetricsCollection(task database.WorkerTask) error {
+func (w *Worker) executeMetricsCollection(_ database.WorkerTask) error {
 	// Simulate metrics collection
 	log.Printf("Worker %s collecting metrics", w.Name)
 	time.Sleep(1 * time.Second)

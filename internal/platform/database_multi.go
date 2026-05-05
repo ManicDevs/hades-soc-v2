@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"hades-v2/internal/database"
+	"log"
 	"sync"
 	"time"
 )
@@ -128,36 +129,6 @@ func NewDatabaseMulti(config *DatabaseConfigMulti) (*DatabaseMulti, error) {
 	}
 
 	return multiDB, nil
-}
-
-// buildDSN creates the data source name for the database
-func (dc *DatabaseConfigMulti) buildDSN() (string, error) {
-	switch dc.Type {
-	case DatabaseSQLite:
-		return dc.Database, nil
-	case DatabasePostgres:
-		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			dc.Host, dc.Port, dc.Username, dc.Password, dc.Database, dc.SSLMode), nil
-	case DatabaseMySQL:
-		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=Local",
-			dc.Username, dc.Password, dc.Host, dc.Port, dc.Database, dc.Charset), nil
-	default:
-		return "", fmt.Errorf("hades.platform.database: unsupported database type: %s", dc.Type)
-	}
-}
-
-// getDriver returns the database driver name
-func (dc *DatabaseConfigMulti) getDriver() string {
-	switch dc.Type {
-	case DatabaseSQLite:
-		return "sqlite3"
-	case DatabasePostgres:
-		return "postgres"
-	case DatabaseMySQL:
-		return "mysql"
-	default:
-		return "sqlite3"
-	}
 }
 
 // initialize sets up the database with proper configuration
@@ -474,7 +445,11 @@ func (mm *MigrationManager) GetAppliedMigrations() ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var versions []int
 	for rows.Next() {
@@ -494,7 +469,11 @@ func (mm *MigrationManager) ApplyMigration(migration Migration) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			fmt.Printf("Warning: failed to rollback transaction: %v\n", err)
+		}
+	}()
 
 	// Execute migration SQL
 	if _, err := tx.Exec(migration.SQL); err != nil {

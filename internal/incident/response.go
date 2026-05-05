@@ -87,7 +87,6 @@ type ResponseEngine struct {
 	Name      string
 	Actions   map[string]*ResponseAction
 	Executors map[string]ActionExecutor
-	mu        sync.RWMutex
 }
 
 // ActionExecutor interface for different action types
@@ -180,7 +179,6 @@ type IncidentNote struct {
 // NotificationService handles incident notifications
 type NotificationService struct {
 	channels map[string]NotificationChannel
-	mu       sync.RWMutex
 }
 
 // NotificationChannel interface for different notification channels
@@ -1031,7 +1029,9 @@ func (irm *IncidentResponseManager) executeEscalationNotification(ctx context.Co
 		Timestamp: time.Now(),
 	}
 
-	irm.notificationService.Send(ctx, notification)
+	if err := irm.notificationService.Send(ctx, notification); err != nil {
+		fmt.Printf("Warning: failed to send notification: %v\n", err)
+	}
 }
 
 // executeEscalationAssignment executes escalation assignment

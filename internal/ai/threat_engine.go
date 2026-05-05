@@ -101,7 +101,6 @@ type AIThreatEngine struct {
 	TrafficAnalyzer    *TrafficPatternAnalyzer // Internal lateral movement detection
 	SanitizationLayer  *SanitizationLayer      // Adversarial AI defense
 	mu                 sync.RWMutex
-	isTraining         bool
 	eventBus           *bus.EventBus
 	cascadeSubs        []*bus.Subscription
 	cascadeActions     map[string]CascadeAction
@@ -650,12 +649,12 @@ func (ate *AIThreatEngine) registerDefaultCascadeActions() {
 		Action: func(ctx context.Context, event bus.Event) error {
 			log.Printf("Cascade: Processing recon results from %s for target %s", event.Source, event.Target)
 
-			var findings []string
+			// Process findings without storing unused variable
 			if openPorts, ok := event.Payload["open_ports"].([]int); ok {
-				findings = append(findings, fmt.Sprintf("open_ports: %v", openPorts))
+				log.Printf("Cascade: Open ports detected: %v", openPorts)
 			}
 			if total, ok := event.Payload["total_found"].(int); ok {
-				findings = append(findings, fmt.Sprintf("findings: %d", total))
+				log.Printf("Cascade: Total findings: %d", total)
 			}
 
 			assessment, err := ate.AnalyzeThreat(ctx, SecurityEvent{
@@ -1001,7 +1000,30 @@ func (ate *AIThreatEngine) AnalyzeThreat(ctx context.Context, event SecurityEven
 		if err != nil {
 			log.Printf("Sanitization check failed: %v", err)
 		} else if !sanitizationResult.IsSafe {
-			// Event was quarantined due to prompt injection
+			// Event was quarantined due to prompt injection - publish SecurityUpgradeRequest
+			upgradeReq := types.NewSecurityUpgradeRequest(
+				"ai_threat_engine",
+				event.Type,
+				fmt.Sprintf("Prompt injection detected - quarantined event: %s", event.ID),
+			).WithInternalReasoning(fmt.Sprintf("Sanitization pattern matched: %s", sanitizationResult.Reasoning))
+
+			upgradeEnvelope, err := types.WrapEvent(types.EventTypeSecurityUpgradeRequest, upgradeReq)
+			if err != nil {
+				fmt.Printf("Warning: failed to wrap upgrade request: %v\n", err)
+			}
+			ate.eventBus.Publish(bus.Event{
+				Type:   bus.EventType(types.EventTypeSecurityUpgradeRequest),
+				Source: "ai_threat_engine",
+				Target: event.Type,
+				Payload: map[string]interface{}{
+					"data":         upgradeEnvelope.Payload,
+					"upgrade_type": "prompt_injection_quarantine",
+					"confidence":   1.0,
+					"reasoning":    fmt.Sprintf("Sanitization pattern matched: %s", sanitizationResult.Reasoning),
+					"timestamp":    time.Now().Unix(),
+				},
+			})
+
 			return &ThreatAssessment{
 				EventID:         event.ID,
 				ThreatScore:     1.0, // Maximum threat score
@@ -1699,7 +1721,10 @@ func (ate *AIThreatEngine) publishLateralMovementEvent(indicator *LateralMovemen
 		fmt.Sprintf("Internal lateral movement detected via %s. Source node %s shows suspicious activity pattern. Confidence: %.2f%%. Immediate VLAN isolation required.",
 			indicator.Type, indicator.SourceNode, indicator.Confidence*100),
 	)
-	logEnvelope, _ := types.WrapEvent(types.EventTypeLog, logEvent)
+	logEnvelope, err := types.WrapEvent(types.EventTypeLog, logEvent)
+	if err != nil {
+		fmt.Printf("Warning: failed to wrap log event: %v\n", err)
+	}
 
 	bus.Default().Publish(bus.Event{
 		Type:   bus.EventTypeLogEvent,

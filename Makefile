@@ -1,6 +1,6 @@
 # Hades-V2 Enterprise Security Framework Makefile
 
-.PHONY: help build test clean docker docker-build docker-run install uninstall dev prod
+.PHONY: help build test clean docker docker-build docker-run install uninstall dev prod check-secrets
 
 # Variables
 BINARY_NAME=hades
@@ -176,6 +176,36 @@ release: clean build-all ## Build release binaries
 security-scan: ## Run security scan
 	@echo "Running security scan..."
 	gosec ./...
+
+check-secrets: ## Scan repository for secrets
+	@echo "🔍 Scanning repository for secrets..."
+	@echo "Scanning for JWT_SECRET, PASSWORD, *_KEY, *_TOKEN, TAILSCALE_AUTHKEY patterns..."
+	@SECRETS_FOUND=false; \
+	for file in $$(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*"); do \
+		if grep -E "JWT_SECRET=[^[:space:]]+[^[:space:]]|PASSWORD=[^[:space:]]+[^[:space:]]|.*_KEY=[^[:space:]]+[^[:space:]]|.*_TOKEN=[^[:space:]]+[^[:space:]]|TAILSCALE_AUTHKEY=[^[:space:]]+[^[:space:]]" "$$file" >/dev/null 2>&1; then \
+			echo "❌ SECRET DETECTED in $$file"; \
+			SECRETS_FOUND=true; \
+		fi; \
+	done; \
+	for file in $$(find . -name "*.yml" -o -name "*.yaml" -o -name "*.json" -o -name "*.env*" -not -name "*.env.*.example" -not -path "./vendor/*" -not -path "./.git/*"); do \
+		if grep -E "JWT_SECRET=[^[:space:]]+[^[:space:]]|PASSWORD=[^[:space:]]+[^[:space:]]|.*_KEY=[^[:space:]]+[^[:space:]]|.*_TOKEN=[^[:space:]]+[^[:space:]]|TAILSCALE_AUTHKEY=[^[:space:]]+[^[:space:]]" "$$file" >/dev/null 2>&1; then \
+			echo "❌ SECRET DETECTED in $$file"; \
+			SECRETS_FOUND=true; \
+		fi; \
+	done; \
+	for file in $$(find ./web -name "*.js" -o -name "*.jsx" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json"); do \
+		if grep -E "JWT_SECRET=[^[:space:]]+[^[:space:]]|PASSWORD=[^[:space:]]+[^[:space:]]|.*_KEY=[^[:space:]]+[^[:space:]]|.*_TOKEN=[^[:space:]]+[^[:space:]]|TAILSCALE_AUTHKEY=[^[:space:]]+[^[:space:]]" "$$file" >/dev/null 2>&1; then \
+			echo "❌ SECRET DETECTED in $$file"; \
+			SECRETS_FOUND=true; \
+		fi; \
+	done; \
+	if [ "$$SECRETS_FOUND" = true ]; then \
+		echo "❌ SECRETS DETECTED! Please remove or replace with placeholder values."; \
+		exit 1; \
+	else \
+		echo "✅ No secrets detected in repository."; \
+		exit 0; \
+	fi
 
 deps-check: ## Check for vulnerable dependencies
 	@echo "Checking dependencies..."

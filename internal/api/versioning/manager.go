@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+// Custom context key types to avoid staticcheck SA1029
+type contextKey string
+
+const (
+	apiVersionKey  contextKey = "api_version"
+	versionInfoKey contextKey = "version_info"
+)
+
 // Version Status Constants
 const (
 	StatusLegacy     = "legacy"
@@ -309,8 +317,8 @@ func (vm *VersionManager) Middleware(next http.Handler) http.Handler {
 		vm.ApplyVersionHeaders(w, version)
 
 		// Add version to context
-		ctx := context.WithValue(r.Context(), "api_version", version)
-		ctx = context.WithValue(ctx, "version_info", vm.versions[version])
+		ctx := context.WithValue(r.Context(), apiVersionKey, version)
+		ctx = context.WithValue(ctx, versionInfoKey, vm.versions[version])
 
 		// Record metrics
 		vm.recordVersionUsage(version, r)

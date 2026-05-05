@@ -143,7 +143,9 @@ func (m *MFAService) verifyCodeAtCounter(secret string, counter, code uint64) bo
 
 	// Generate HMAC
 	hash := hmac.New(sha1.New, key)
-	binary.Write(hash, binary.BigEndian, counter)
+	if err := binary.Write(hash, binary.BigEndian, counter); err != nil {
+		return false
+	}
 	sum := hash.Sum(nil)
 
 	// Dynamic truncation

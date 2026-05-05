@@ -28,10 +28,6 @@ type CacheManager struct {
 }
 
 type cacheEntry struct {
-	value       interface{}
-	expiresAt   time.Time
-	accessCount int
-	lastAccess  time.Time
 }
 
 // NewCacheManager creates a new cache manager instance

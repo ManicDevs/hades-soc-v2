@@ -164,11 +164,15 @@ func (wsm *WebSocketManager) handleConnection(conn *websocket.Conn) {
 		wsm.mu.Lock()
 		delete(wsm.connections, conn)
 		wsm.mu.Unlock()
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("Warning: failed to close connection: %v", err)
+		}
 	}()
 
 	// Set read deadline
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		log.Printf("Warning: failed to set read deadline: %v", err)
+	}
 
 	for {
 		// Read message from WebSocket
@@ -415,7 +419,11 @@ func (wsm *WebSocketManager) getRecentThreats() ([]database.Threat, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch threats: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var threats []database.Threat
 	for rows.Next() {
@@ -448,7 +456,11 @@ func (wsm *WebSocketManager) getActiveUsers() ([]database.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch users: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var users []database.User
 	for rows.Next() {
@@ -504,7 +516,11 @@ func (wsm *WebSocketManager) getNotifications() ([]database.Notification, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch notifications: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var notifications []database.Notification
 	for rows.Next() {

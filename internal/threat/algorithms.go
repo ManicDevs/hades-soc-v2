@@ -538,7 +538,7 @@ func (sqli *SQLInjectionDetection) Detect(ctx context.Context, event SecurityEve
 
 	payload := event.Query + event.Payload
 	for _, pattern := range sqlInjectionPatterns {
-		if matched, _ := regexp.MatchString(pattern, payload); matched {
+		if matched, err := regexp.MatchString(pattern, payload); err == nil && matched {
 			return &ThreatAlert{
 				ID:          fmt.Sprintf("sqli_%d", time.Now().UnixNano()),
 				Timestamp:   event.Timestamp,
@@ -606,7 +606,7 @@ func (xss *XSSDetection) Detect(ctx context.Context, event SecurityEvent) (*Thre
 
 	payload := event.Query + event.Payload
 	for _, pattern := range xssPatterns {
-		if matched, _ := regexp.MatchString(pattern, payload); matched {
+		if matched, err := regexp.MatchString(pattern, payload); err == nil && matched {
 			return &ThreatAlert{
 				ID:          fmt.Sprintf("xss_%d", time.Now().UnixNano()),
 				Timestamp:   event.Timestamp,

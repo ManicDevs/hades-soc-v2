@@ -61,7 +61,11 @@ func (p *PostgreSQLDatabase) GetTables() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var tables []string
 	for rows.Next() {

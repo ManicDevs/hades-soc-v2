@@ -250,7 +250,10 @@ func main() {
 	// Publish LogEvent for scan completion
 	scanReasoning := fmt.Sprintf("Port scan completed for %s. Open ports: 22, 80, 443, 8080. Potential attack vectors identified.", testTarget)
 	scanLog := types.NewLogEvent("port_scanner", "Scan completed", scanReasoning)
-	scanEnvelope, _ := types.WrapEvent(types.EventTypeLog, scanLog)
+	scanEnvelope, err := types.WrapEvent(types.EventTypeLog, scanLog)
+	if err != nil {
+		fmt.Printf("Warning: failed to wrap scan log event: %v\n", err)
+	}
 
 	eventBus.Publish(bus.Event{
 		Type:    bus.EventTypeLogEvent,
@@ -379,7 +382,10 @@ func main() {
 
 	for _, de := range dashboardEvents {
 		logEvent := types.NewLogEvent(de.agent, de.message, de.reason)
-		logEnvelope, _ := types.WrapEvent(types.EventTypeLog, logEvent)
+		logEnvelope, err := types.WrapEvent(types.EventTypeLog, logEvent)
+		if err != nil {
+			fmt.Printf("Warning: failed to wrap log event: %v\n", err)
+		}
 
 		eventBus.Publish(bus.Event{
 			Type:    bus.EventTypeLogEvent,
@@ -464,7 +470,11 @@ func main() {
 
 	// Write report to file
 	reportFile := fmt.Sprintf("omega_simulation_report_%s.json", time.Now().Format("20060102_150405"))
-	reportJSON, _ := json.MarshalIndent(report, "", "  ")
+	reportJSON, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal report: %v\n", err)
+		return
+	}
 	if err := os.WriteFile(reportFile, reportJSON, 0644); err != nil {
 		log.Printf("Warning: Could not write report file: %v", err)
 	} else {

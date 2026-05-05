@@ -102,7 +102,9 @@ func (r *GlobalStateRepository) GetByID(id int) (*GlobalState, error) {
 		return nil, fmt.Errorf("failed to get global state: %w", err)
 	}
 
-	json.Unmarshal(metadataJSON, &state.Metadata)
+	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
 	return state, nil
 }
 
@@ -131,7 +133,9 @@ func (r *GlobalStateRepository) GetByTaskID(taskID string) (*GlobalState, error)
 		return nil, fmt.Errorf("failed to get global state by task_id: %w", err)
 	}
 
-	json.Unmarshal(metadataJSON, &state.Metadata)
+	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
 	return state, nil
 }
 
@@ -163,7 +167,9 @@ func (r *GlobalStateRepository) FindRunningByTarget(taskType TaskType, target st
 		return nil, fmt.Errorf("failed to find running state by target: %w", err)
 	}
 
-	json.Unmarshal(metadataJSON, &state.Metadata)
+	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
 	return state, nil
 }
 
@@ -195,7 +201,9 @@ func (r *GlobalStateRepository) FindRunningByModule(taskType TaskType, moduleNam
 		return nil, fmt.Errorf("failed to find running state by module: %w", err)
 	}
 
-	json.Unmarshal(metadataJSON, &state.Metadata)
+	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
 	return state, nil
 }
 
@@ -213,7 +221,11 @@ func (r *GlobalStateRepository) ListByStatus(taskType TaskType, status TaskStatu
 	if err != nil {
 		return nil, fmt.Errorf("failed to list global states by status: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			fmt.Printf("Warning: failed to close rows: %v\n", err)
+		}
+	}()
 
 	var states []*GlobalState
 	for rows.Next() {
@@ -230,7 +242,9 @@ func (r *GlobalStateRepository) ListByStatus(taskType TaskType, status TaskStatu
 			return nil, fmt.Errorf("failed to scan global state: %w", err)
 		}
 
-		json.Unmarshal(metadataJSON, &state.Metadata)
+		if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		}
 		states = append(states, state)
 	}
 
@@ -292,7 +306,11 @@ func (r *GlobalStateRepository) FindByTimeRange(start, end time.Time) ([]*Global
 	if err != nil {
 		return nil, fmt.Errorf("failed to query global states by time range: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			fmt.Printf("Warning: failed to close rows: %v\n", err)
+		}
+	}()
 
 	return r.scanGlobalStates(rows)
 }
@@ -312,7 +330,11 @@ func (r *GlobalStateRepository) FindByTypeAndStatus(taskType TaskType, status Ta
 	if err != nil {
 		return nil, fmt.Errorf("failed to query global states by type and status: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			fmt.Printf("Warning: failed to close rows: %v\n", err)
+		}
+	}()
 
 	return r.scanGlobalStates(rows)
 }
@@ -341,7 +363,9 @@ func (r *GlobalStateRepository) scanGlobalStates(rows *sql.Rows) ([]*GlobalState
 		}
 
 		if len(metadataJSON) > 0 {
-			json.Unmarshal(metadataJSON, &state.Metadata)
+			if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
 		}
 
 		states = append(states, state)

@@ -97,7 +97,11 @@ func (pa *PolicyAgent) monitorLog(ctx context.Context) {
 		log.Printf("PolicyAgent: Failed to open log file: %v", err)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Warning: failed to close log file: %v", err)
+		}
+	}()
 
 	stat, err := file.Stat()
 	if err != nil {

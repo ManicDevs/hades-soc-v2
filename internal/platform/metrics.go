@@ -62,14 +62,14 @@ var (
 
 // MetricsCollector manages SOC metrics collection and reporting
 type MetricsCollector struct {
-	mu                sync.RWMutex
-	currentRiskLevel  float64
-	lastRiskUpdate    time.Time
-	actionCounts      map[string]int64
-	threatCounts      map[string]int64
-	sessionCount      int
-	workerCount       int
-	startTime         time.Time
+	mu               sync.RWMutex
+	currentRiskLevel float64
+	lastRiskUpdate   time.Time
+	actionCounts     map[string]int64
+	threatCounts     map[string]int64
+	sessionCount     int
+	workerCount      int
+	startTime        time.Time
 }
 
 // NewMetricsCollector creates a new metrics collector instance
@@ -162,14 +162,14 @@ func (mc *MetricsCollector) GetMetricsSummary() map[string]interface{} {
 	uptime := time.Since(mc.startTime)
 
 	return map[string]interface{}{
-		"global_risk_level":     mc.currentRiskLevel,
-		"last_risk_update":      mc.lastRiskUpdate.Format(time.RFC3339),
-		"autonomous_actions":    mc.actionCounts["total"],
-		"threats_by_severity":   mc.threatCounts,
-		"active_sessions":       mc.sessionCount,
-		"active_workers":        mc.workerCount,
-		"uptime_seconds":        uptime.Seconds(),
-		"uptime_human":          uptime.String(),
+		"global_risk_level":   mc.currentRiskLevel,
+		"last_risk_update":    mc.lastRiskUpdate.Format(time.RFC3339),
+		"autonomous_actions":  mc.actionCounts["total"],
+		"threats_by_severity": mc.threatCounts,
+		"active_sessions":     mc.sessionCount,
+		"active_workers":      mc.workerCount,
+		"uptime_seconds":      uptime.Seconds(),
+		"uptime_human":        uptime.String(),
 	}
 }
 

@@ -67,11 +67,8 @@ func (sm *SyncManager) startSyncMonitoring() {
 	ticker := time.NewTicker(sm.config.SyncInterval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			sm.performSyncCycle()
-		}
+	for range ticker.C {
+		sm.performSyncCycle()
 	}
 }
 

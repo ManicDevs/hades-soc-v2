@@ -64,8 +64,11 @@ coverage.html
 
 # Environment files
 .env
-.env.local
+.env.*
 .env.*.local
+# Explicit exceptions for example files
+!.env.example
+!.env.*.example
 
 # SSL certificates
 *.pem
@@ -185,10 +188,7 @@ local_monitoring/
 .tools/
 dev-tools/
 
-# Local environment overrides
-.env.override
-.env.dev
-.env.staging
+# Local environment overrides (covered by .env.* pattern above)
 
 # Local service discovery
 discovery/

@@ -1,13 +1,10 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // Enhanced data structures for v2
@@ -262,95 +259,7 @@ type SystemInfoV2 struct {
 }
 
 // V2 Handler implementations
-func (s *Server) handleV2Login(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username   string `json:"username"`
-		Password   string `json:"password"`
-		Remember   bool   `json:"remember"`
-		ClientInfo struct {
-			UserAgent string `json:"user_agent"`
-			IPAddress string `json:"ip_address"`
-			Platform  string `json:"platform"`
-		} `json:"client_info"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeErrorV2(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request format", "", err.Error())
-		return
-	}
-
-	// Enhanced user profile
-	user := UserV2{
-		ID:          1,
-		Username:    req.Username,
-		Email:       req.Username + "@hades-toolkit.com",
-		Role:        "Administrator",
-		Status:      "active",
-		LastLogin:   time.Now(),
-		Permissions: []string{"read", "write", "admin"},
-		Profile: UserProfileV2{
-			FirstName:  "Admin",
-			LastName:   "User",
-			Avatar:     "/avatars/admin.png",
-			Department: "Security",
-			Location:   "HQ",
-			Bio:        "System administrator",
-			LastSeen:   time.Now(),
-		},
-		Sessions: []UserSessionV2{
-			{
-				ID:        generateSessionID(),
-				IPAddress: req.ClientInfo.IPAddress,
-				UserAgent: req.ClientInfo.UserAgent,
-				CreatedAt: time.Now(),
-				ExpiresAt: time.Now().Add(24 * time.Hour),
-				Active:    true,
-			},
-		},
-		Preferences: map[string]interface{}{
-			"theme":         "dark",
-			"notifications": true,
-			"language":      "en",
-			"timezone":      "UTC",
-		},
-		CreatedAt: time.Now().Add(-365 * 24 * time.Hour),
-		UpdatedAt: time.Now(),
-	}
-
-	// Enhanced JWT with more claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":     user.ID,
-		"username":    user.Username,
-		"role":        user.Role,
-		"permissions": user.Permissions,
-		"session_id":  user.Sessions[0].ID,
-		"ip_address":  req.ClientInfo.IPAddress,
-		"user_agent":  req.ClientInfo.UserAgent,
-		"exp":         time.Now().Add(24 * time.Hour).Unix(),
-		"iat":         time.Now().Unix(),
-		"jti":         generateTokenID(),
-	})
-
-	tokenString, err := token.SignedString(jwtSecret)
-	if err != nil {
-		s.writeErrorV2(w, http.StatusInternalServerError, "TOKEN_GENERATION_FAILED", "Failed to generate token", "", err.Error())
-		return
-	}
-
-	response := struct {
-		Token     string    `json:"token"`
-		User      UserV2    `json:"user"`
-		ExpiresAt time.Time `json:"expires_at"`
-		SessionID string    `json:"session_id"`
-	}{
-		Token:     tokenString,
-		User:      user,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-		SessionID: user.Sessions[0].ID,
-	}
-
-	s.writeSuccessV2(w, response)
-}
+// handleV2Login function removed - unused
 
 func (s *Server) handleV2DashboardMetrics(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters for enhanced filtering
@@ -592,8 +501,14 @@ func (s *Server) handleV2Threats(w http.ResponseWriter, r *http.Request) {
 // Helper functions
 func parseSearchRequest(r *http.Request) SearchRequest {
 	query := r.URL.Query()
-	page, _ := strconv.Atoi(query.Get("page"))
-	pageSize, _ := strconv.Atoi(query.Get("page_size"))
+	page, err := strconv.Atoi(query.Get("page"))
+	if err != nil {
+		page = 1
+	}
+	pageSize, err := strconv.Atoi(query.Get("page_size"))
+	if err != nil {
+		pageSize = 20
+	}
 
 	if page < 1 {
 		page = 1
@@ -639,13 +554,7 @@ func calculateTotalPages(total, pageSize int) int {
 	return (total + pageSize - 1) / pageSize
 }
 
-func generateSessionID() string {
-	return fmt.Sprintf("session_%d", time.Now().UnixNano())
-}
-
-func generateTokenID() string {
-	return fmt.Sprintf("token_%d", time.Now().UnixNano())
-}
+// generateSessionID and generateTokenID functions removed - unused
 
 func generateRequestID() string {
 	return fmt.Sprintf("req_%d", time.Now().UnixNano())
@@ -656,34 +565,4 @@ func (s *Server) writeSuccessV2(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/vnd.hades.v2+json")
 	w.Header().Set("API-Version", "v2")
 	s.writeJSON(w, http.StatusOK, Response{Success: true, Data: data})
-}
-
-func (s *Server) writeErrorV2(w http.ResponseWriter, statusCode int, code, message, field, details string) {
-	w.Header().Set("Content-Type", "application/vnd.hades.v2+json")
-	w.Header().Set("API-Version", "v2")
-
-	errorResp := ErrorResponseV2{
-		Error: ErrorDetailV2{
-			Code:    code,
-			Message: message,
-			Details: details,
-			Field:   field,
-		},
-		Request: RequestInfoV2{
-			Method:    "POST", // This should come from the request
-			Path:      "/api/v2/auth/login",
-			Headers:   make(map[string]string),
-			Timestamp: time.Now(),
-			RequestID: generateRequestID(),
-		},
-		System: SystemInfoV2{
-			Version:   "2.0.0",
-			Build:     "20240501-001",
-			Timestamp: time.Now(),
-			TraceID:   generateRequestID(),
-		},
-	}
-
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(errorResp)
 }

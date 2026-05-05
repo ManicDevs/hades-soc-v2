@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -365,7 +366,11 @@ func (d *Database) GetScanResults(ctx context.Context, moduleName, target string
 	if err != nil {
 		return nil, fmt.Errorf("hades.platform.database: failed to query scan results: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var results []map[string]interface{}
 	for rows.Next() {
@@ -446,7 +451,11 @@ func (d *Database) GetAuditLogs(ctx context.Context, userID, action string, limi
 	if err != nil {
 		return nil, fmt.Errorf("hades.platform.database: failed to query audit logs: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var logs []map[string]interface{}
 	for rows.Next() {

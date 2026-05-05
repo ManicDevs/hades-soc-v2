@@ -108,22 +108,22 @@ func (r *DailyReadinessReport) ToMarkdown() string {
 
 	// Header
 	sb.WriteString("# ⚡ Hades SOC: 24h Autonomous Readiness Report\n")
-	sb.WriteString(fmt.Sprintf("**Report Date:** %s | **System Uptime:** %s | **Global Risk Level:** %.1f%%\n\n",
+	fmt.Fprintf(&sb, "**Report Date:** %s | **System Uptime:** %s | **Global Risk Level:** %.1f%%\n\n",
 		r.ReportDate.Format("2006-01-02 15:04 MST"),
 		r.SystemUptime,
-		r.GlobalRiskLevel))
+		r.GlobalRiskLevel)
 
 	// Section 1: Agentic Performance
 	sb.WriteString("## 🤖 1. Agentic Performance Summary\n")
-	sb.WriteString(fmt.Sprintf("*   **Total Cascades Triggered:** %d (e.g., Recon -> Scan)\n", r.TotalCascadesTriggered))
-	sb.WriteString(fmt.Sprintf("*   **Successful Remediations:** %d\n", r.SuccessfulRemediations))
-	sb.WriteString(fmt.Sprintf("*   **Safety Governor Interventions:** %d (High-risk events paused)\n", r.SafetyGovernorInterventions))
-	sb.WriteString(fmt.Sprintf("*   **Mean Time to Respond (MTTR):** %d ms\n\n", r.MeanTimeToRespond.Milliseconds()))
+	fmt.Fprintf(&sb, "*   **Total Cascades Triggered:** %d (e.g., Recon -> Scan)\n", r.TotalCascadesTriggered)
+	fmt.Fprintf(&sb, "*   **Successful Remediations:** %d\n", r.SuccessfulRemediations)
+	fmt.Fprintf(&sb, "*   **Safety Governor Interventions:** %d (High-risk events paused)\n", r.SafetyGovernorInterventions)
+	fmt.Fprintf(&sb, "*   **Mean Time to Respond (MTTR):** %d ms\n\n", r.MeanTimeToRespond.Milliseconds())
 
 	// Section 2: Discovery & Recon
 	sb.WriteString("## 🔍 2. Discovery & Recon (Phase 1)\n")
-	sb.WriteString(fmt.Sprintf("*   **New Assets Identified:** %d\n", r.NewAssetsIdentified))
-	sb.WriteString(fmt.Sprintf("*   **High-Priority Targets Mapped:** %d\n", r.HighPriorityTargetsMapped))
+	fmt.Fprintf(&sb, "*   **New Assets Identified:** %d\n", r.NewAssetsIdentified)
+	fmt.Fprintf(&sb, "*   **High-Priority Targets Mapped:** %d\n", r.HighPriorityTargetsMapped)
 	sb.WriteString("*   **Autonomous OSINT Findings:** ")
 	if len(r.OSINTFindings) > 0 {
 		sb.WriteString("[")
@@ -141,33 +141,33 @@ func (r *DailyReadinessReport) ToMarkdown() string {
 
 	// Section 3: Defensive Actions
 	sb.WriteString("## 🛡️ 3. Defensive Actions (Phase 2 & 3)\n")
-	sb.WriteString(fmt.Sprintf("*   **Quantum Shield Activations:** %d\n", r.QuantumShieldActivations))
+	fmt.Fprintf(&sb, "*   **Quantum Shield Activations:** %d\n", r.QuantumShieldActivations)
 	if r.TopBruteForceSource != "" {
-		sb.WriteString(fmt.Sprintf("    - *Reasoning:* %s\n", r.TopBruteForceSource))
+		fmt.Fprintf(&sb, "    - *Reasoning:* %s\n", r.TopBruteForceSource)
 	}
-	sb.WriteString(fmt.Sprintf("*   **Zero-Trust Isolations:** %d\n", r.ZeroTrustIsolations))
-	sb.WriteString(fmt.Sprintf("*   **Brute-Force Mitigations:** %d\n\n", r.BruteForceMitigations))
+	fmt.Fprintf(&sb, "*   **Zero-Trust Isolations:** %d\n", r.ZeroTrustIsolations)
+	fmt.Fprintf(&sb, "*   **Brute-Force Mitigations:** %d\n\n", r.BruteForceMitigations)
 
 	// Section 4: Self-Healing & Integrity
 	sb.WriteString("## 🧬 4. Self-Healing & Integrity (Phase 5)\n")
-	sb.WriteString(fmt.Sprintf("*   **Autonomous Patches Applied:** %d\n", r.AutonomousPatchesApplied))
+	fmt.Fprintf(&sb, "*   **Autonomous Patches Applied:** %d\n", r.AutonomousPatchesApplied)
 	if len(r.PatchExamples) > 0 {
-		sb.WriteString(fmt.Sprintf("    - *Example:* %s\n", r.PatchExamples[0]))
+		fmt.Fprintf(&sb, "    - *Example:* %s\n", r.PatchExamples[0])
 	}
 	if r.AllPatchesVerified {
 		sb.WriteString("*   **Verification Status:** ✅ ALL PATCHES VERIFIED\n")
 	} else {
 		sb.WriteString("*   **Verification Status:** ⚠️ PENDING VERIFICATION\n")
 	}
-	sb.WriteString(fmt.Sprintf("*   **Entropy Check:** Quantum entropy source health at %.1f%%\n\n", r.EntropyPercentage))
+	fmt.Fprintf(&sb, "*   **Entropy Check:** Quantum entropy source health at %.1f%%\n\n", r.EntropyPercentage)
 
 	// Section 6: Honey Token Tripwires (Identity Deception)
 	sb.WriteString("## 🍯 6. Identity Deception - Honey Token Tripwires\n")
-	sb.WriteString(fmt.Sprintf("*   **Honey-Token Traps Triggered:** %d\n", r.HoneyTokenTripwires))
+	fmt.Fprintf(&sb, "*   **Honey-Token Traps Triggered:** %d\n", r.HoneyTokenTripwires)
 	if r.HoneyTokenTripwires > 0 {
 		sb.WriteString("*   **🚨 ACTIVE THREATS DETECTED:**\n")
 		for _, detail := range r.HoneyTokenDetails {
-			sb.WriteString(fmt.Sprintf("    - %s\n", detail))
+			fmt.Fprintf(&sb, "    - %s\n", detail)
 		}
 		sb.WriteString("*   **Immediate Actions Taken:** Source IPs isolated, sessions revoked, Sentinel team alerted\n")
 	} else {
@@ -185,9 +185,9 @@ func (r *DailyReadinessReport) ToMarkdown() string {
 			if alert.Prevented {
 				preventedText = " (Prevented by Safety Governor)"
 			}
-			sb.WriteString(fmt.Sprintf("*   [ ] Event ID #%s: %s%s\n", alert.EventID, alert.Description, preventedText))
+			fmt.Fprintf(&sb, "*   [ ] Event ID #%s: %s%s\n", alert.EventID, alert.Description, preventedText)
 			if alert.Reason != "" {
-				sb.WriteString(fmt.Sprintf("    - *Reason:* %s\n", alert.Reason))
+				fmt.Fprintf(&sb, "    - *Reason:* %s\n", alert.Reason)
 			}
 		}
 	}

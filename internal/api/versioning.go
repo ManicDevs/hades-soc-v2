@@ -127,7 +127,7 @@ func (vm *VersioningMiddleware) VersionHandler(version string, handler http.Hand
 		}
 
 		// Add version context to request
-		ctx := context.WithValue(r.Context(), "api_version", version)
+		ctx := context.WithValue(r.Context(), apiVersionKey, version)
 		handler(w, r.WithContext(ctx))
 	}
 }

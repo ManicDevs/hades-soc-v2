@@ -177,7 +177,6 @@ func (r *postgresAuditLogRepository) buildSelectQuery(filter AuditLogFilter) (st
 	if !filter.DateTo.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("timestamp <= $%d", argNum))
 		args = append(args, filter.DateTo)
-		argNum++
 	}
 
 	whereClause := ""
@@ -242,7 +241,6 @@ func (r *postgresAuditLogRepository) buildCountQuery(filter AuditLogFilter) (str
 	if !filter.DateTo.IsZero() {
 		conditions = append(conditions, fmt.Sprintf("timestamp <= $%d", argNum))
 		args = append(args, filter.DateTo)
-		argNum++
 	}
 
 	whereClause := ""

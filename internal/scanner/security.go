@@ -169,7 +169,6 @@ type ScanCapabilities struct {
 type ScanAlerting struct {
 	channels map[string]AlertChannel
 	rules    []AlertRule
-	mu       sync.RWMutex
 }
 
 // AlertChannel interface for different alert channels
@@ -492,7 +491,11 @@ func (ss *SecurityScanner) checkScheduledScans(ctx context.Context) {
 			}
 
 			// Run the scan
-			go ss.ScanTarget(ctx, target, policy.ID)
+			go func() {
+				if _, err := ss.ScanTarget(ctx, target, policy.ID); err != nil {
+					fmt.Printf("Warning: failed to scan target %+v: %v\n", target, err)
+				}
+			}()
 
 			// Update next run time
 			ss.mu.Lock()
@@ -1264,7 +1267,10 @@ func (ss *SecurityScanner) publishVulnerabilityFoundEvent(targetID string, vuln 
 	reasoning := fmt.Sprintf("Vulnerability %s detected in %s. Severity: %s. Auto-fix available: %v via %s",
 		vuln.ID, targetID, vuln.Severity, event.Remediation.AutoFixAvailable, event.Remediation.FixedModulePath)
 	logEvent := types.NewLogEvent("security_scanner", fmt.Sprintf("Vulnerability found: %s", vuln.Title), reasoning)
-	logEnvelope, _ := types.WrapEvent(types.EventType(bus.EventTypeLogEvent), logEvent)
+	logEnvelope, err := types.WrapEvent(types.EventType(bus.EventTypeLogEvent), logEvent)
+	if err != nil {
+		fmt.Printf("Warning: failed to wrap log event: %v\n", err)
+	}
 
 	bus.Default().Publish(bus.Event{
 		Type:    bus.EventTypeLogEvent,

@@ -390,7 +390,11 @@ func (ae *AuditEngine) getLatestBlockHash() string {
 
 // calculateEntryHash calculates hash for an audit entry
 func (ae *AuditEngine) calculateEntryHash(entry *AuditEntry) string {
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal audit entry: %v\n", err)
+		data = []byte("{}")
+	}
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -405,7 +409,11 @@ func (ae *AuditEngine) calculateBlockHash(block *Block) string {
 		"merkle_root":   block.MerkleRoot,
 		"validator":     block.Validator,
 	}
-	data, _ := json.Marshal(blockData)
+	data, err := json.Marshal(blockData)
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal block data: %v\n", err)
+		data = []byte("{}")
+	}
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -561,7 +569,11 @@ func (ae *AuditEngine) saveBlock(block *Block) error {
 
 // calculateProofHash calculates hash for a proof
 func (ae *AuditEngine) calculateProofHash(proof *Proof) string {
-	data, _ := json.Marshal(proof)
+	data, err := json.Marshal(proof)
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal proof: %v\n", err)
+		data = []byte("{}")
+	}
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }

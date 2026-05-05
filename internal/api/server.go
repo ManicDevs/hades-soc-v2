@@ -533,7 +533,10 @@ func (s *Server) handleGetReportContent(w http.ResponseWriter, r *http.Request) 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleEventsWebSocket(w http.ResponseWriter, r *http.Request) {

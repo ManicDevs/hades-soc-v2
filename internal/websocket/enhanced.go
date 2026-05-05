@@ -201,7 +201,9 @@ func (wsm *EnhancedWebSocketManager) unregisterClient(client *EnhancedClient) {
 	if _, exists := wsm.clients[client.ID]; exists {
 		delete(wsm.clients, client.ID)
 		close(client.SendChan)
-		client.Connection.Close()
+		if err := client.Connection.Close(); err != nil {
+			log.Printf("Warning: failed to close client connection: %v", err)
+		}
 
 		// Remove from all rooms
 		for roomID := range client.Rooms {
@@ -221,15 +223,21 @@ func (wsm *EnhancedWebSocketManager) writePump(client *EnhancedClient) {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		client.Connection.Close()
+		if err := client.Connection.Close(); err != nil {
+			log.Printf("Warning: failed to close client connection: %v", err)
+		}
 	}()
 
 	for {
 		select {
 		case message, ok := <-client.SendChan:
-			client.Connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := client.Connection.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				log.Printf("Warning: failed to set write deadline: %v", err)
+			}
 			if !ok {
-				client.Connection.WriteMessage(websocket.CloseMessage, []byte{})
+				if err := client.Connection.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+					log.Printf("Warning: failed to write close message: %v", err)
+				}
 				return
 			}
 
@@ -239,8 +247,11 @@ func (wsm *EnhancedWebSocketManager) writePump(client *EnhancedClient) {
 			}
 
 		case <-ticker.C:
-			client.Connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := client.Connection.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				log.Printf("Warning: failed to set write deadline: %v", err)
+			}
 			if err := client.Connection.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Warning: failed to write ping message: %v", err)
 				return
 			}
 		}
@@ -254,9 +265,13 @@ func (wsm *EnhancedWebSocketManager) readPump(client *EnhancedClient) {
 	}()
 
 	client.Connection.SetReadLimit(512)
-	client.Connection.SetReadDeadline(time.Now().Add(60 * time.Second))
+	if err := client.Connection.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		log.Printf("Warning: failed to set read deadline: %v", err)
+	}
 	client.Connection.SetPongHandler(func(string) error {
-		client.Connection.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if err := client.Connection.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+			log.Printf("Warning: failed to set read deadline: %v", err)
+		}
 		client.LastActivity = time.Now()
 		return nil
 	})

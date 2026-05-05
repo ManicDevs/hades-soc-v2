@@ -280,7 +280,9 @@ func (s *Sentinel) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(statusCode)
 
 	// Always return JSON response for consistency
-	json.NewEncoder(w).Encode(health)
+	if err := json.NewEncoder(w).Encode(health); err != nil {
+		log.Printf("Failed to encode health response: %v", err)
+	}
 }
 
 // Stop gracefully shuts down all agentic loops
@@ -319,7 +321,9 @@ func (s *Sentinel) Stop() {
 
 	// Close database connection
 	if s.db != nil {
-		s.db.Close()
+		if err := s.db.Close(); err != nil {
+			log.Printf("Failed to close database: %v", err)
+		}
 		log.Println("💾 Database connection closed")
 	}
 

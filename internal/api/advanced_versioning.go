@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// Custom context key types to avoid staticcheck SA1029
+type contextKey string
+
+const (
+	apiVersionKey         contextKey = "api_version"
+	versioningStrategyKey contextKey = "versioning_strategy"
+)
+
 // Versioning Strategy Types
 type VersioningStrategy string
 
@@ -571,8 +579,8 @@ func (avs *AdvancedVersioningSystem) AdvancedVersioningMiddleware(next http.Hand
 		avs.checkDeprecation(w, version)
 
 		// Add version to context
-		ctx := context.WithValue(r.Context(), "api_version", version)
-		ctx = context.WithValue(ctx, "versioning_strategy", avs.getActiveStrategy(r))
+		ctx := context.WithValue(r.Context(), apiVersionKey, version)
+		ctx = context.WithValue(ctx, versioningStrategyKey, avs.getActiveStrategy(r))
 
 		// Add performance metrics
 		startTime := time.Now()

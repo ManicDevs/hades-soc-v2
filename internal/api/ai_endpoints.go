@@ -138,7 +138,10 @@ func (ae *AIEndpoints) handleBatchAnalyze(w http.ResponseWriter, r *http.Request
 
 	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
-	encoder.Encode(response)
+	if err := encoder.Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // handleThreatScore handles threat scoring
@@ -184,40 +187,7 @@ func (ae *AIEndpoints) handleThreatScore(w http.ResponseWriter, r *http.Request)
 	WriteJSONResponse(w, response)
 }
 
-// handleAnomalyDetection handles anomaly detection
-func (ae *AIEndpoints) handleAnomalyDetection(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var event ai.SecurityEvent
-	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now()
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	assessment, err := ae.threatEngine.AnalyzeThreat(ctx, event)
-	if err != nil {
-		http.Error(w, "Analysis failed", http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"anomalies":     assessment.Anomalies,
-		"anomaly_score": assessment.AnomalyScore,
-		"timestamp":     time.Now(),
-	}
-
-	WriteJSONResponse(w, response)
-}
+// handleAnomalyDetection function removed - unused
 
 // handlePatternMatching handles pattern matching
 func (ae *AIEndpoints) handlePatternMatching(w http.ResponseWriter, r *http.Request) {
@@ -335,7 +305,10 @@ func (ae *AIEndpoints) handleModelStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // handleModelTraining triggers model training
@@ -406,7 +379,10 @@ func (ae *AIEndpoints) handleAnomalies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // handlePredictions handles getting ML predictions

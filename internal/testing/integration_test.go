@@ -23,7 +23,11 @@ func TestDatabaseConnections(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to open SQLite database: %v", err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Logf("Warning: failed to close database: %v", err)
+			}
+		}()
 
 		err = db.Ping()
 		if err != nil {
@@ -59,7 +63,11 @@ func TestDatabaseConnections(t *testing.T) {
 		if err != nil {
 			t.Skipf("PostgreSQL not available: %v", err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Logf("Warning: failed to close database: %v", err)
+			}
+		}()
 
 		err = db.Ping()
 		if err != nil {
@@ -95,7 +103,11 @@ func TestDatabaseConnections(t *testing.T) {
 		if err != nil {
 			t.Skipf("MySQL not available: %v", err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Logf("Warning: failed to close database: %v", err)
+			}
+		}()
 
 		err = db.Ping()
 		if err != nil {
@@ -139,7 +151,11 @@ func TestSQLDatabase(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to connect to SQLite: %v", err)
 		}
-		defer sqlDB.Close()
+		defer func() {
+			if err := sqlDB.Close(); err != nil {
+				t.Logf("Warning: failed to close database: %v", err)
+			}
+		}()
 
 		// Test ping
 		err = sqlDB.Ping()
@@ -195,7 +211,11 @@ func TestDatabasePerformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to SQLite: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	db := sqlDB.GetDB()
 
@@ -253,7 +273,11 @@ func TestDatabaseTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to SQLite: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	db := sqlDB.GetDB()
 
@@ -271,7 +295,9 @@ func TestDatabaseTransactions(t *testing.T) {
 
 	_, err = tx.Exec("INSERT INTO tx_test (value) VALUES (?)", 100)
 	if err != nil {
-		tx.Rollback()
+		if err := tx.Rollback(); err != nil {
+			t.Logf("Warning: failed to rollback transaction: %v", err)
+		}
 		t.Fatalf("Failed to insert in transaction: %v", err)
 	}
 
@@ -299,14 +325,18 @@ func TestDatabaseTransactions(t *testing.T) {
 
 	_, err = tx.Exec("INSERT INTO tx_test (value) VALUES (?)", 200)
 	if err != nil {
-		tx.Rollback()
+		if err := tx.Rollback(); err != nil {
+			t.Logf("Warning: failed to rollback transaction: %v", err)
+		}
 		t.Fatalf("Failed to insert in transaction: %v", err)
 	}
 
 	// Intentionally cause an error
 	_, err = tx.Exec("INSERT INTO tx_test (nonexistent_column) VALUES (?)", 100)
 	if err == nil {
-		tx.Rollback()
+		if err := tx.Rollback(); err != nil {
+			t.Logf("Warning: failed to rollback transaction: %v", err)
+		}
 		t.Fatal("Expected error for invalid insert")
 	}
 
@@ -329,7 +359,9 @@ func TestDatabaseTransactions(t *testing.T) {
 // TestDatabaseConcurrency tests concurrent database access
 func TestDatabaseConcurrency(t *testing.T) {
 	// Clean up any existing database file
-	os.Remove("/tmp/test_concurrency.db")
+	if err := os.Remove("/tmp/test_concurrency.db"); err != nil && !os.IsNotExist(err) {
+		t.Logf("Warning: failed to remove test database file: %v", err)
+	}
 
 	// Create SQLite database
 	config := database.DatabaseConfig{
@@ -342,7 +374,11 @@ func TestDatabaseConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to SQLite: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	db := sqlDB.GetDB()
 

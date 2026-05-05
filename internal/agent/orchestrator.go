@@ -65,7 +65,6 @@ type OrchestrationRule struct {
 
 var (
 	defaultOrchestrator *Orchestrator
-	orchestratorOnce    sync.Once
 )
 
 func NewOrchestrator(eventBus *bus.EventBus, dispatcher *engine.Dispatcher, db *sql.DB) *Orchestrator {
@@ -297,7 +296,11 @@ func (o *Orchestrator) recordDecision(ruleName string, event bus.Event, action s
 		Factors:         event.Payload,
 	}
 
-	reasonJSON, _ := json.Marshal(dbReason)
+	reasonJSON, err := json.Marshal(dbReason)
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal decision reason: %v\n", err)
+		reasonJSON = []byte("{}")
+	}
 
 	decision := &database.GlobalState{
 		TaskID:        fmt.Sprintf("decision_%d", time.Now().UnixNano()),
@@ -426,7 +429,11 @@ func (o *Orchestrator) registerDefaultRules() {
 
 				// Create and publish ActionRequest for port scan
 				actionReq := types.NewActionRequest("orchestrator", "PortScan", target, reasoning)
-				envelope, _ := types.WrapEvent(types.EventTypeActionRequest, actionReq)
+				envelope, err := types.WrapEvent(types.EventTypeActionRequest, actionReq)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap action request event: %v\n", err)
+					return "failed to wrap action request", err
+				}
 
 				o.eventBus.Publish(bus.Event{
 					Type:   bus.EventTypeActionRequest,
@@ -443,7 +450,10 @@ func (o *Orchestrator) registerDefaultRules() {
 
 				// Publish LogEvent for thought stream
 				logEvent := types.NewLogEvent("orchestrator", fmt.Sprintf("Requesting port scan for new asset: %s", target), reasoning)
-				logEnvelope, _ := types.WrapEvent(types.EventTypeLog, logEvent)
+				logEnvelope, err := types.WrapEvent(types.EventTypeLog, logEvent)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap log event: %v\n", err)
+				}
 				o.eventBus.Publish(bus.Event{
 					Type:    bus.EventTypeLogEvent,
 					Source:  "orchestrator",
@@ -743,7 +753,10 @@ func (o *Orchestrator) registerDefaultRules() {
 				).
 					WithInternalReasoning(fmt.Sprintf("Node %s showed lateral movement indicators. Forcing PQC key rotation to protect against quantum-enabled adversaries.", sourceNode))
 
-				upgradeEnvelope, _ := types.WrapEvent(types.EventTypeActionRequest, upgradeReq)
+				upgradeEnvelope, err := types.WrapEvent(types.EventTypeActionRequest, upgradeReq)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap upgrade request: %v\n", err)
+				}
 				o.eventBus.Publish(bus.Event{
 					Type:   bus.EventTypeSecurityUpgradeRequest,
 					Source: "orchestrator",
@@ -837,7 +850,10 @@ func (o *Orchestrator) registerDefaultRules() {
 				actionReq := types.NewActionRequest("orchestrator", "HotSwapModule", category, reasoning).
 					WithTarget(fixedModulePath)
 
-				actionEnvelope, _ := types.WrapEvent(types.EventType(bus.EventTypeActionRequest), actionReq)
+				actionEnvelope, err := types.WrapEvent(types.EventType(bus.EventTypeActionRequest), actionReq)
+				if err != nil {
+					fmt.Printf("Warning: failed to wrap action request: %v\n", err)
+				}
 				o.eventBus.Publish(bus.Event{
 					Type:   bus.EventTypeActionRequest,
 					Source: "orchestrator",
@@ -1150,7 +1166,11 @@ func (o *Orchestrator) isInSafeList(ip string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Failed to close CIDR rows: %v", err)
+		}
+	}()
 
 	for rows.Next() {
 		var cidr string
@@ -1183,7 +1203,11 @@ func (o *Orchestrator) getCloudProvider(ip string) (*database.CloudProvider, boo
 	if err != nil {
 		return nil, false
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
@@ -1290,9 +1314,12 @@ func (o *Orchestrator) setScanMode(target string, mode database.ScanMode, reason
 		"evasion_techniques":  []string{"randomized_payloads", "encoding_variation", "timing_randomization"},
 		"detection_avoidance": true,
 	}
-	settingsJSON, _ := json.Marshal(settings)
+	settingsJSON, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to marshal scan mode settings: %w", err)
+	}
 
-	_, err := o.db.Exec(query, target, mode, reason, triggeredBy, settingsJSON, expiresAt, time.Now())
+	_, err = o.db.Exec(query, target, mode, reason, triggeredBy, settingsJSON, expiresAt, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to set scan mode: %w", err)
 	}
@@ -1301,33 +1328,7 @@ func (o *Orchestrator) setScanMode(target string, mode database.ScanMode, reason
 	return nil
 }
 
-// getScanMode retrieves the current scan mode for a target
-func (o *Orchestrator) getScanMode(target string) (database.ScanMode, error) {
-	if o.db == nil {
-		return database.ScanModeStandard, nil
-	}
-
-	var mode database.ScanMode
-	var expiresAt *time.Time
-
-	query := `SELECT mode, expires_at FROM scan_mode_configs WHERE target = $1`
-	err := o.db.QueryRow(query, target).Scan(&mode, &expiresAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return database.ScanModeStandard, nil
-		}
-		return database.ScanModeStandard, err
-	}
-
-	// Check if mode has expired
-	if expiresAt != nil && time.Now().After(*expiresAt) {
-		// Reset to standard mode
-		_, _ = o.db.Exec(`DELETE FROM scan_mode_configs WHERE target = $1`, target)
-		return database.ScanModeStandard, nil
-	}
-
-	return mode, nil
-}
+// getScanMode function removed - unused
 
 // checkFixedModuleExists checks if a fixed module file exists in internal/auxiliary/
 func (o *Orchestrator) checkFixedModuleExists(modulePath string) bool {
@@ -1643,6 +1644,22 @@ func (o *Orchestrator) checkSafetyGovernor(action, target string) (bool, string)
 			return true, ""
 		}
 		log.Printf("🛡️ SAFETY GOVERNOR: Blocking action '%s' on target '%s' - hourly limit exceeded", action, target)
+
+		// Emit ManualACKRequired event for 6th block rejection
+		manualAckEvent := bus.Event{
+			Type:   bus.EventTypeManualACKRequired,
+			Source: "orchestrator",
+			Target: target,
+			Payload: map[string]interface{}{
+				"action_name": action,
+				"blocks_used": o.safetyGovernor.currentBlockCount,
+				"max_blocks":  o.safetyGovernor.maxAutomatedBlocksPerHour,
+				"reasoning":   "6th automated block rejected - manual acknowledgement required",
+				"timestamp":   time.Now().Unix(),
+			},
+		}
+		o.eventBus.Publish(manualAckEvent)
+
 		return false, "Hourly automated block limit exceeded"
 	}
 
@@ -1676,7 +1693,11 @@ func (o *Orchestrator) handleNewAssetEvent(event bus.Event) error {
 	// Trigger recon scan via internal/recon module
 	reasoning := fmt.Sprintf("NewAssetEvent for %s - initiating comprehensive reconnaissance scan", event.Target)
 	actionReq := types.NewActionRequest("orchestrator", "ReconScan", event.Target, reasoning)
-	envelope, _ := types.WrapEvent(types.EventTypeActionRequest, actionReq)
+	envelope, err := types.WrapEvent(types.EventTypeActionRequest, actionReq)
+	if err != nil {
+		fmt.Printf("Warning: failed to wrap recon scan action request: %v\n", err)
+		return fmt.Errorf("failed to wrap recon scan action request: %w", err)
+	}
 
 	o.eventBus.Publish(bus.Event{
 		Type:   bus.EventTypeActionRequest,
@@ -1726,7 +1747,10 @@ func (o *Orchestrator) handleThreatEvent(event bus.Event) error {
 			"High-confidence threat detected; elevating to Post-Quantum Cryptography",
 		).WithInternalReasoning(internalReasoning)
 
-		upgradeEnvelope, _ := types.WrapEvent(types.EventTypeActionRequest, upgradeReq)
+		upgradeEnvelope, err := types.WrapEvent(types.EventTypeActionRequest, upgradeReq)
+		if err != nil {
+			fmt.Printf("Warning: failed to wrap upgrade request: %v\n", err)
+		}
 		o.eventBus.Publish(bus.Event{
 			Type:   bus.EventTypeSecurityUpgradeRequest,
 			Source: "orchestrator",

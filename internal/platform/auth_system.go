@@ -334,7 +334,11 @@ func (as *EnterpriseAuthSystem) loadSystemState() {
 	// Load users
 	if usersData, ok := systemData["users"].(map[string]interface{}); ok {
 		for username, userData := range usersData {
-			userJson, _ := json.Marshal(userData)
+			userJson, err := json.Marshal(userData)
+			if err != nil {
+				fmt.Printf("Warning: failed to marshal user data for %s: %v\n", username, err)
+				continue
+			}
 			var user EnterpriseUser
 			if err := json.Unmarshal(userJson, &user); err == nil {
 				as.users[strings.ToLower(username)] = &user
@@ -357,7 +361,9 @@ func (as *EnterpriseAuthSystem) HandleSetup(w http.ResponseWriter, r *http.Reque
 			"setup_token":    as.setupToken,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			fmt.Printf("Warning: failed to encode JSON response: %v\n", err)
+		}
 		return
 	}
 

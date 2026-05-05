@@ -923,6 +923,72 @@ go run ./cmd/hades web start --port 8443 --dev
 ./hades --verbose web start --port 8443
 ```
 
+### Environment Setup
+
+The Hades SOC uses environment variables for configuration. Follow these steps to set up your local development environment:
+
+#### 1. Copy Environment Files
+```bash
+# Copy the appropriate example file
+cp .env.example .env                    # Base configuration
+cp .env.dev.example .env.dev            # Development overrides
+cp .env.prod.example .env.prod          # Production overrides  
+cp .env.test.example .env.test           # Test overrides
+```
+
+#### 2. Configure Your Environment
+Edit the copied `.env` files with your actual values:
+
+**Required Variables:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `JWT_SECRET` - JWT signing secret (minimum 32 characters)
+- `ENCRYPTION_KEY` - Application encryption key (minimum 32 characters)
+
+**Optional Variables:**
+- `REDIS_URL` - Redis connection URL (if using Redis)
+- `KAFKA_BROKERS` - Kafka brokers (comma-separated, if using Kafka)
+- `ELASTICSEARCH_URL` - Elasticsearch URL (if using Elasticsearch)
+- `SIEM_ENDPOINT` - SIEM integration endpoint
+- `TAILSCALE_AUTHKEY` - Tailscale authentication key
+
+#### 3. Security Guidelines
+⚠️ **IMPORTANT SECURITY NOTES:**
+- **Never commit `.env` files** without `.example` suffix to version control
+- Use strong, randomly generated secrets for production
+- Change all default passwords and keys before deployment
+- Store production secrets in secure vault systems when possible
+
+#### 4. Environment-Specific Configurations
+
+**Development (.env.dev):**
+- Debug logging enabled
+- Development ports (3000, 8443, etc.)
+- Authentication disabled for local testing
+- Test database with weak security settings
+
+**Production (.env.prod):**
+- Production logging level (info/warn/error)
+- Secure database connections with SSL
+- Authentication and MFA enabled
+- Production ports (443, 8443, etc.)
+- Security hardening settings enabled
+
+**Testing (.env.test):**
+- Isolated test database
+- Minimal logging for test clarity
+- Short session timeouts for automated tests
+- Test-specific ports to avoid conflicts
+
+#### 5. Verification
+Verify your setup:
+```bash
+# Check for secrets (should return clean)
+make check-secrets
+
+# Test configuration loading
+go run ./cmd/hades config validate
+```
+
 ### Contributing
 1. Fork the repository
 2. Create a feature branch

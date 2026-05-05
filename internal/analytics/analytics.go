@@ -929,7 +929,11 @@ func (ae *AnalyticsEngine) GetThreatAnalytics() (*ThreatAnalytics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get threat types: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var threatTypes []ThreatTypeMetric
 	for rows.Next() {
@@ -958,7 +962,11 @@ func (ae *AnalyticsEngine) GetThreatAnalytics() (*ThreatAnalytics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get threat sources: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var threatSources []ThreatSourceMetric
 	for rows.Next() {
@@ -1000,7 +1008,11 @@ func (ae *AnalyticsEngine) GetThreatAnalytics() (*ThreatAnalytics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response time metrics: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var responseTimes []ResponseTimeMetric
 	for rows.Next() {
@@ -1196,7 +1208,11 @@ func (ae *AnalyticsEngine) GetReports(limit int, offset int) ([]Report, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reports: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Warning: failed to close rows: %v", err)
+		}
+	}()
 
 	var reports []Report
 	for rows.Next() {

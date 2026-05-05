@@ -66,7 +66,6 @@ func (cp *ConnectionPool) Get() (interface{}, error) {
 			} else {
 				// Remove invalid connection
 				cp.removeConnection(i)
-				i--
 			}
 		}
 	}
@@ -445,7 +444,7 @@ func (w *Worker) Start() {
 func (w *Worker) processJob(job Job) {
 	defer func() {
 		if r := recover(); r != nil {
-			// Log panic recovery
+			log.Printf("Worker panic recovered: %v", r)
 		}
 	}()
 

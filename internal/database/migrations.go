@@ -116,8 +116,14 @@ func (m *Migrator) getMigrationFiles(migrationsPath string) ([]MigrationFile, er
 
 	// Sort migrations by version
 	sort.Slice(migrations, func(i, j int) bool {
-		vi, _ := strconv.Atoi(migrations[i].Version)
-		vj, _ := strconv.Atoi(migrations[j].Version)
+		vi, err := strconv.Atoi(migrations[i].Version)
+		if err != nil {
+			vi = 0
+		}
+		vj, err := strconv.Atoi(migrations[j].Version)
+		if err != nil {
+			vj = 0
+		}
 		return vi < vj
 	})
 
@@ -149,7 +155,11 @@ func (m *Migrator) runMigration(migration MigrationFile) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			fmt.Printf("Warning: failed to rollback transaction: %v\n", err)
+		}
+	}()
 
 	// Execute migration
 	if _, err := tx.Exec(migration.SQL); err != nil {

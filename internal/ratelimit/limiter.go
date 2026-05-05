@@ -894,10 +894,14 @@ func (rl *RateLimiter) HTTPMiddleware(next http.Handler) http.Handler {
 		if !result.Allowed {
 			if result.Blocked {
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte("Request blocked due to rate limiting"))
+				if _, err := w.Write([]byte("Request blocked due to rate limiting")); err != nil {
+					fmt.Printf("Warning: failed to write response: %v\n", err)
+				}
 			} else if result.Limited {
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte("Request rate limited"))
+				if _, err := w.Write([]byte("Request rate limited")); err != nil {
+					fmt.Printf("Warning: failed to write response: %v\n", err)
+				}
 			}
 			return
 		}

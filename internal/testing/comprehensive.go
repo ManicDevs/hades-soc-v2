@@ -143,7 +143,9 @@ func (cts *ComprehensiveTestSuite) initializeComponents() {
 		Type:     "sqlite",
 		Database: ":memory:",
 	}
-	cts.db.Connect(config)
+	if err := cts.db.Connect(config); err != nil {
+		log.Printf("Warning: failed to connect database: %v", err)
+	}
 
 	// Initialize API server
 	cts.apiServer = api.NewServer(8080)
@@ -227,7 +229,11 @@ func (cts *ComprehensiveTestSuite) startServices(ctx context.Context) error {
 	}()
 
 	// Start threat detector
-	go cts.threatDetector.TrainModels(ctx, []threat.SecurityEvent{})
+	go func() {
+		if err := cts.threatDetector.TrainModels(ctx, []threat.SecurityEvent{}); err != nil {
+			log.Printf("Warning: failed to train threat models: %v", err)
+		}
+	}()
 
 	// Start audit logger
 	if err := cts.auditLogger.Start(ctx); err != nil {
@@ -245,7 +251,9 @@ func (cts *ComprehensiveTestSuite) startServices(ctx context.Context) error {
 
 // stopServices stops all test services
 func (cts *ComprehensiveTestSuite) stopServices() {
-	cts.auditLogger.Stop()
+	if err := cts.auditLogger.Stop(); err != nil {
+		log.Printf("Warning: failed to stop audit logger: %v", err)
+	}
 	// Note: Other services would be stopped here in a real implementation
 }
 
@@ -1093,7 +1101,9 @@ func RunTests() error {
 
 	// Generate and save report
 	reportDir := "test-results"
-	os.MkdirAll(reportDir, 0755)
+	if err := os.MkdirAll(reportDir, 0755); err != nil {
+		log.Printf("Warning: failed to create report directory: %v", err)
+	}
 
 	reportFile := filepath.Join(reportDir, fmt.Sprintf("comprehensive-test-report-%s.txt", time.Now().Format("20060102-150405")))
 	if err := testSuite.SaveReport(reportFile); err != nil {

@@ -572,7 +572,9 @@ func (hfm *HoneyFileManager) RotateHoneyTraps() error {
 	// Step 2: Delete compromised files and remove from watcher
 	for _, hf := range compromised {
 		// Remove from fsnotify watcher
-		hfm.watcher.Remove(hf.FilePath)
+		if err := hfm.watcher.Remove(hf.FilePath); err != nil {
+			log.Printf("HoneyFileManager: Failed to remove watcher for %s: %v", hf.FilePath, err)
+		}
 
 		// Delete the file from disk
 		if err := os.Remove(hf.FilePath); err != nil {
@@ -601,7 +603,9 @@ func (hfm *HoneyFileManager) RotateHoneyTraps() error {
 				},
 				CompletedAt: &[]time.Time{time.Now()}[0],
 			}
-			hfm.repository.Create(state)
+			if err := hfm.repository.Create(state); err != nil {
+				log.Printf("HoneyFileManager: Failed to create audit record for %s: %v", hf.FilePath, err)
+			}
 		}
 	}
 
@@ -755,7 +759,9 @@ func (hfm *HoneyFileManager) deploySingleHoneyFile(filePath, content string) err
 			},
 			StartedAt: now,
 		}
-		hfm.repository.Create(state)
+		if err := hfm.repository.Create(state); err != nil {
+			log.Printf("HoneyFileManager: Failed to create deployment audit record: %v", err)
+		}
 	}
 
 	// Add to fsnotify watcher
@@ -888,7 +894,9 @@ func (hfm *HoneyFileManager) performRotationWithLogging() {
 // Stop shuts down the honey file manager
 func (hfm *HoneyFileManager) Stop() {
 	hfm.cancel()
-	hfm.watcher.Close()
+	if err := hfm.watcher.Close(); err != nil {
+		log.Printf("HoneyFileManager: Failed to close watcher: %v", err)
+	}
 	if hfm.atimeTicker != nil {
 		hfm.atimeTicker.Stop()
 	}

@@ -8,7 +8,6 @@ import (
 // Integration with existing server
 type ServerIntegration struct {
 	manager *VersionManager
-	server  interface{} // Will be the actual Server type
 }
 
 // NewServerIntegration creates a new server integration

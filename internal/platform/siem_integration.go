@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -197,7 +198,11 @@ func (si *SIEMIntegration) sendToSplunk(ctx context.Context, events []*SIEMEvent
 		if err != nil {
 			return fmt.Errorf("hades.platform.siem: failed to send to Splunk: %w", err)
 		}
-		resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("Warning: failed to close response body: %v", err)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("hades.platform.siem: Splunk returned status %d", resp.StatusCode)
@@ -219,8 +224,16 @@ func (si *SIEMIntegration) sendToElastic(ctx context.Context, events []*SIEMEven
 			},
 		}
 
-		actionJSON, _ := json.Marshal(indexAction)
-		eventJSON, _ := json.Marshal(event)
+		actionJSON, err := json.Marshal(indexAction)
+		if err != nil {
+			fmt.Printf("Warning: failed to marshal index action: %v\n", err)
+			actionJSON = []byte("{}")
+		}
+		eventJSON, err := json.Marshal(event)
+		if err != nil {
+			fmt.Printf("Warning: failed to marshal event: %v\n", err)
+			eventJSON = []byte("{}")
+		}
 
 		bulkBuffer.Write(actionJSON)
 		bulkBuffer.WriteByte('\n')
@@ -240,7 +253,11 @@ func (si *SIEMIntegration) sendToElastic(ctx context.Context, events []*SIEMEven
 	if err != nil {
 		return fmt.Errorf("hades.platform.siem: failed to send to Elastic: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("hades.platform.siem: Elastic returned status %d", resp.StatusCode)
@@ -274,7 +291,11 @@ func (si *SIEMIntegration) sendToSentinelOne(ctx context.Context, events []*SIEM
 	if err != nil {
 		return fmt.Errorf("hades.platform.siem: failed to send to SentinelOne: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("hades.platform.siem: SentinelOne returned status %d", resp.StatusCode)
@@ -308,7 +329,11 @@ func (si *SIEMIntegration) sendToCrowdStrike(ctx context.Context, events []*SIEM
 	if err != nil {
 		return fmt.Errorf("hades.platform.siem: failed to send to CrowdStrike: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("hades.platform.siem: CrowdStrike returned status %d", resp.StatusCode)
@@ -359,7 +384,11 @@ func (si *SIEMIntegration) sendToQRadar(ctx context.Context, events []*SIEMEvent
 	if err != nil {
 		return fmt.Errorf("hades.platform.siem: failed to send to QRadar: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("hades.platform.siem: QRadar returned status %d", resp.StatusCode)
@@ -445,7 +474,11 @@ func (si *SIEMIntegration) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("hades.platform.siem: health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("hades.platform.siem: health check returned status %d", resp.StatusCode)

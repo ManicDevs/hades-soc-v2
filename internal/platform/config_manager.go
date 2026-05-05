@@ -259,7 +259,12 @@ func GetConfigManager() *ConfigManager {
 		if err != nil {
 			log.Printf("Failed to create config manager: %v", err)
 			// Create a fallback config manager
-			globalConfigManager, _ = NewConfigManager("/tmp/hades_config.json")
+			fallbackManager, err := NewConfigManager("/tmp/hades_config.json")
+			if err != nil {
+				log.Printf("Failed to create fallback config manager: %v", err)
+			} else {
+				globalConfigManager = fallbackManager
+			}
 		}
 	})
 	return globalConfigManager
