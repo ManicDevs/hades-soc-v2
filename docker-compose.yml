@@ -1,108 +1,144 @@
-version: '3.8'
+# Hades SOC V2.0 - Simple Containerized Deployment
+# Load variables from .env file automatically
 
 services:
-  hades:
-    build: .
-    container_name: hades
-    restart: unless-stopped
-    ports:
-      - "8443:8443"
-      - "8080:8080"
+  # PostgreSQL Database - Primary data store
+  hades-db:
+    image: postgres:16-alpine
+    container_name: hades-db-${ENV_SUFFIX}.localhost
+    restart: ${RESTART_POLICY:-unless-stopped}
     environment:
-      - HADES_DB_TYPE=postgres
-      - HADES_DB_HOST=postgres
-      - HADES_DB_PORT=5432
-      - HADES_DB_NAME=hades
-      - HADES_DB_USER=hades
-      - HADES_DB_PASSWORD=secure-password
-      - HADES_REDIS_URL=redis://redis:6379
-      - HADES_LOG_LEVEL=info
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     volumes:
-      - hades_data:/app/data
-      - hades_logs:/app/logs
-      - hades_config:/app/config
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/setup_postgresql.sh:/docker-entrypoint-initdb.d/setup.sh:ro
+    ports:
+      - "${POSTGRES_PORT}:5432"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8443/api/health"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:${NON_ROOT_USER:-true}
+    networks:
+      - hades-backend
+
+  # Hades Sentinel - Main service
+  hades-sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION}
+        BUILD_TIME:
+    container_name: hades-sentinel-${ENV_SUFFIX}.localhost
+    restart: ${RESTART_POLICY:-unless-stopped}
+    networks:
+      - hades-backend
+    ports:
+      - "${SENTINEL_PORT}:2112"  # Metrics and health
+    depends_on:
+      - hades-db
+    environment:
+      - HADES_ENV=${HADES_ENV}
+      - DATABASE_URL=${DATABASE_URL}
+      - GIN_MODE=${GIN_MODE}
+      - LOG_LEVEL=${LOG_LEVEL}
+    volumes:
+      - ./data/sentinel:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2112/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - hades-network
+    cap_add:
+      - NET_BIND_SERVICE
 
-  postgres:
-    image: postgres:15-alpine
-    container_name: hades-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: hades
-      POSTGRES_USER: hades
-      POSTGRES_PASSWORD: secure-password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hades"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Hades API - REST API endpoints
+  hades-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION}
+        BUILD_TIME:
+    container_name: hades-api-${ENV_SUFFIX}.localhost
+    restart: ${RESTART_POLICY:-unless-stopped}
     networks:
-      - hades-network
-
-  redis:
-    image: redis:7-alpine
-    container_name: hades-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass redis-password
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    networks:
-      - hades-network
-
-  nginx:
-    image: nginx:alpine
-    container_name: hades-nginx
-    restart: unless-stopped
+      - hades-backend
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - nginx_logs:/var/log/nginx
+      - "${HADES_API_PORT}:8080"  # API endpoints
     depends_on:
-      - hades
-    networks:
-      - hades-network
+      - hades-db
+    environment:
+      - HADES_ENV=${HADES_ENV}
+      - DATABASE_URL=${DATABASE_URL}
+      - GIN_MODE=${GIN_MODE}
+      - LOG_LEVEL=${LOG_LEVEL}
+    volumes:
+      - ./data/sentinel:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    cap_add:
+      - NET_BIND_SERVICE
 
-volumes:
-  hades_data:
-    driver: local
-  hades_logs:
-    driver: local
-  hades_config:
-    driver: local
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  nginx_logs:
-    driver: local
+  # Hades Dashboard - React web UI
+  hades-dashboard:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: hades-dashboard-${ENV_SUFFIX}.localhost
+    restart: ${RESTART_POLICY:-unless-stopped}
+    networks:
+      - hades-backend
+    ports:
+      - "${DASHBOARD_PORT}:80"  # Web dashboard
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:${NON_ROOT_USER:-true}
+
+  # Uptime Kuma - Monitoring dashboard
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: hades-uptime-kuma-${ENV_SUFFIX}.localhost
+    restart: ${RESTART_POLICY:-unless-stopped}
+    networks:
+      - hades-backend
+    environment:
+      - NODE_ENV=${HADES_ENV}
+    volumes:
+      - ./data/uptime-kuma:/app/data
+    ports:
+      - "${UPTIME_KUMA_PORT}:3001"  # Uptime Kuma UI
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:${NON_ROOT_USER:-true}
 
 networks:
-  hades-network:
+  hades-backend-${ENV_SUFFIX}:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: ${INTERNAL_NETWORK_SUBNET}
+          gateway: ${INTERNAL_NETWORK_GATEWAY}

@@ -156,6 +156,253 @@ sudo mv hades /usr/local/bin/
 ./hades auxiliary start api_server_fixed --port 8080 --token your-api-token
 ```
 
+## 🐳 Docker Deployment (Recommended)
+
+### Containerized Security Operations Center
+
+Hades SOC V2.0 provides a production-ready, security-hardened Docker deployment with multi-stage builds, network isolation, and autonomous container orchestration.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Hades SOC v2.0 Stack                      │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Sentinel  │  │     DB      │  │   Uptime Kuma      │  │
+│  │   :2112     │◄─┤  PostgreSQL │  │   :3001            │  │
+│  │  (Metrics + │  │    :5432    │  │  (Health Monitor)  │  │
+│  │   Health)   │  │             │  │                    │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────────┘  │
+│         │                │                                   │
+│         └────────────────┘                                   │
+│              │                                               │
+│         ┌────┴────┐                                         │
+│         │Tailscale│  ← Secure Mesh Network Sidecar         │
+│         │ Sidecar │    (Zero-config VPN)                    │
+│         └─────────┘                                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Services
+
+| Service | Image | Purpose | Port |
+|---------|-------|---------|------|
+| **hades-sentinel** | `hades-sentinel:v2.0` | Headless threat detection & response | 2112 |
+| **hades-db** | `postgres:16-alpine` | Primary PostgreSQL datastore | 5432 |
+| **hades-tailscale** | `tailscale/tailscale:latest` | Secure mesh network sidecar | - |
+| **hades-uptime-kuma** | `louislam/uptime-kuma:1` | Health monitoring dashboard | 3001 |
+
+### Quick Deploy
+
+```bash
+# Clone and enter directory
+git clone https://github.com/your-org/hades-v2.git
+cd hades-v2
+
+# Create environment configuration
+cp .env.example .env
+# Edit .env and set POSTGRES_PASSWORD and TAILSCALE_AUTHKEY (optional)
+
+# Deploy the stack
+docker-compose up -d
+
+# Or deploy manually:
+docker network create --driver bridge --subnet=172.25.0.0/16 hades-soc-internal
+
+# Start database
+docker run -d --name hades-db --network hades-soc-internal \
+  -p 5432:5432 -e POSTGRES_PASSWORD=your_secure_password \
+  -v ./data/postgres:/var/lib/postgresql/data \
+  --restart unless-stopped postgres:16-alpine
+
+# Start sentinel (linked to DB)
+docker run -d --name hades-sentinel --network hades-soc-internal \
+  -p 2112:2112 -e DATABASE_URL="postgresql://hades:password@hades-db:5432/hades_db" \
+  --restart unless-stopped hades-sentinel:v2.0
+
+# Start monitoring
+docker run -d --name uptime-kuma --network hades-soc-internal \
+  -p 3001:3001 -v ./data/uptime-kuma:/app/data \
+  --restart unless-stopped louislam/uptime-kuma:1
+```
+
+### Security Features
+
+- **Multi-stage Dockerfile**: Alpine 3.19 base with minimal attack surface
+- **Non-root containers**: Services run as unprivileged users (UID 1001)
+- **Seccomp profiles**: System call filtering applied
+- **Network isolation**: Dedicated internal bridge network (`hades-soc-internal`)
+- **Read-only filesystem**: Sentinel container runs with read-only root
+- **Capability dropping**: All capabilities dropped, only `NET_BIND_SERVICE` added
+- **No new privileges**: Prevents privilege escalation
+- **Health checks**: Docker-native health monitoring for all services
+
+### Persistent Storage
+
+```
+./data/
+├── postgres/          # PostgreSQL database files
+├── sentinel/           # Sentinel state and logs
+├── uptime-kuma/       # Monitoring configuration
+└── tailscale/         # Tailscale state (if enabled)
+```
+
+### Tailscale Sidecar Architecture
+
+The Tailscale sidecar provides secure, zero-configuration VPN access to the Hades SOC stack:
+
+```yaml
+# docker-compose.yml snippet
+tailscale:
+  image: tailscale/tailscale:latest
+  container_name: hades-tailscale
+  network_mode: service:hades-sentinel  # Shares network namespace
+  cap_add:
+    - NET_ADMIN
+    - SYS_MODULE
+  volumes:
+    - ./data/tailscale:/var/lib/tailscale
+    - /dev/net/tun:/dev/net/tun
+  environment:
+    - TS_AUTHKEY=${TAILSCALE_AUTHKEY}
+```
+
+**Benefits:**
+- **Zero-config VPN**: No firewall rules or port forwarding needed
+- **Mesh networking**: Secure communication between distributed nodes
+- **MagicDNS**: Easy service discovery across your tailnet
+- **ACLs**: Fine-grained access control per service
+- **Audit logging**: Complete network activity tracking
+
+**Setup:**
+1. Create a Tailscale account at https://tailscale.com
+2. Generate an auth key in the admin console
+3. Add `TAILSCALE_AUTHKEY=tskey-auth-xxx` to your `.env` file
+4. Deploy with `docker-compose up -d tailscale`
+
+### Monitoring & Health Checks
+
+**Sentinel Health Endpoint:**
+```bash
+curl http://localhost:2112/health
+```
+
+Response:
+```json
+{
+  "status": "healthy",
+  "version": "V2.0",
+  "components": {
+    "database": "connected",
+    "orchestrator": "running",
+    "dispatcher": "running"
+  },
+  "metrics_summary": {
+    "active_workers": 5,
+    "global_risk_level": 0,
+    "uptime_human": "2h15m30s"
+  }
+}
+```
+
+**Prometheus Metrics:**
+```bash
+curl http://localhost:2112/metrics
+```
+
+**Uptime Kuma Dashboard:**
+Access at `http://localhost:3001` to configure monitoring for the sentinel's `/health` endpoint.
+
+### Container Maintenance
+
+```bash
+# View logs
+docker logs -f hades-sentinel
+docker logs -f hades-db
+
+# Restart services
+docker restart hades-sentinel
+
+# Update images
+docker-compose pull
+docker-compose up -d
+
+# Backup data
+tar -czf hades-backup-$(date +%Y%m%d).tar.gz ./data/
+
+# Clean up
+docker-compose down -v  # Remove containers and volumes
+docker system prune -f  # Clean unused images
+```
+
+### SOC Operations & Monitoring
+
+#### Quick Health Check Script
+
+Run the comprehensive health check script:
+
+```bash
+# Quick system status overview
+./scripts/hades-check.sh
+```
+
+This script displays:
+- **Container Status**: Live view of all Hades containers
+- **Brain Health**: Sentinel `/health` endpoint status with worker count and risk level
+- **Latest Risk Score**: Most recent daily report risk assessment
+
+#### Shell Aliases (Recommended)
+
+Add these aliases to your `~/.bashrc` or `~/.zshrc` for quick SOC management:
+
+```bash
+# Add to ~/.bashrc
+alias hades-status='docker compose logs -f --tail=20'
+alias hades-ps='docker compose ps'
+alias hades-health='curl -s http://localhost:2112/health | jq .'
+```
+
+Then activate:
+```bash
+source ~/.bashrc  # or source ~/.zshrc
+```
+
+**Alias Usage:**
+- `hades-status` - Stream live logs from all containers (last 20 lines)
+- `hades-ps` - Quick container status overview
+- `hades-health` - Pretty-print the sentinel health JSON
+
+#### Manual Health Checks
+
+```bash
+# Check container health
+docker compose ps
+
+# Verify the "brain" (sentinel)
+curl -s http://localhost:2112/health | jq .
+
+# View latest risk score
+tail -n 5 reports/daily_report_latest.md
+
+# Check specific container logs
+docker logs --tail=50 hades-sentinel
+docker logs --tail=20 hades-db
+```
+
+#### Prometheus Metrics
+
+```bash
+# View raw metrics
+curl -s http://localhost:2112/metrics
+
+# Key metrics to monitor:
+# - hades_global_risk_level (0.0-10.0)
+# - hades_worker_pool_active_workers (should be 5)
+# - hades_threat_detection_total (cumulative threats)
+# - hades_database_connections_active
+```
+
 ## 🌐 Web Dashboard
 
 Access the web dashboard at `http://localhost:8443`

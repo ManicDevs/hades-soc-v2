@@ -151,11 +151,11 @@ vK1lG7h5x4s3P2q1y8v7b6n5m4l3k2j1h0g9f8e7d6c5b4a3IDAQAB
 	hfm.atimeTicker = time.NewTicker(500 * time.Millisecond)
 	go hfm.pollAtime()
 
-	// Start weekly rotation ticker (168 hours = 7 days)
-	weeklyDuration := 168 * time.Hour
-	hfm.StartRotationTicker(weeklyDuration)
+	// Start Sunday midnight rotation for predictable weekly deception refresh
+	// This ensures honey traps rotate at 00:00 every Sunday, making attacker reconnaissance obsolete weekly
+	hfm.StartSundayMidnightRotation()
 
-	log.Println("HoneyFileManager: Honey files deployed - Triple-layer active (fsnotify + Atime polling + Weekly rotation)")
+	log.Println("HoneyFileManager: Honey files deployed - Triple-layer active (fsnotify + Atime polling + Sunday Midnight rotation)")
 	return nil
 }
 
@@ -806,6 +806,83 @@ func (hfm *HoneyFileManager) StartRotationTicker(duration time.Duration) {
 			}
 		}
 	}()
+}
+
+// StartSundayMidnightRotation schedules honey trap rotation every Sunday at midnight (00:00)
+// This provides predictable weekly rotation while ensuring fresh deception at the start of each week
+func (hfm *HoneyFileManager) StartSundayMidnightRotation() {
+	now := time.Now()
+
+	// Calculate days until next Sunday (Sunday = 0, Monday = 1, ... Saturday = 6)
+	daysUntilSunday := (7 - int(now.Weekday())) % 7
+	if daysUntilSunday == 0 && now.Hour() == 0 && now.Minute() == 0 {
+		// If it's currently Sunday midnight, schedule for next Sunday
+		daysUntilSunday = 7
+	}
+
+	// Calculate next Sunday at midnight
+	nextSunday := now.AddDate(0, 0, daysUntilSunday)
+	nextSundayMidnight := time.Date(
+		nextSunday.Year(), nextSunday.Month(), nextSunday.Day(),
+		0, 0, 0, 0, now.Location(),
+	)
+
+	durationUntilSunday := nextSundayMidnight.Sub(now)
+
+	log.Printf("🕛 Sunday Midnight Rotation scheduled for: %s (in %v)",
+		nextSundayMidnight.Format("2006-01-02 15:04:05"), durationUntilSunday)
+
+	// Initial delay timer until next Sunday midnight
+	go func() {
+		select {
+		case <-hfm.ctx.Done():
+			return
+		case <-time.After(durationUntilSunday):
+			log.Println("🕛 SUNDAY MIDNIGHT: Initiating weekly honey trap rotation")
+			hfm.performRotationWithLogging()
+
+			// After first Sunday rotation, start weekly ticker
+			weeklyDuration := 168 * time.Hour // 7 days
+			hfm.StartRotationTicker(weeklyDuration)
+		}
+	}()
+}
+
+// performRotationWithLogging executes rotation and publishes dashboard events
+func (hfm *HoneyFileManager) performRotationWithLogging() {
+	if err := hfm.RotateHoneyTraps(); err != nil {
+		log.Printf("HoneyFileManager: Sunday midnight rotation failed: %v", err)
+		hfm.eventBus.Publish(bus.Event{
+			Type:   bus.EventTypeLogEvent,
+			Source: "honey_file_sentinel",
+			Target: "dashboard",
+			Payload: map[string]interface{}{
+				"agent_name":         "honey_file_sentinel",
+				"message":            "❌ Sunday midnight rotation failed",
+				"internal_reasoning": fmt.Sprintf("Rotation error: %v", err),
+				"severity":           "error",
+				"category":           "honey_file_rotation",
+				"rotation_type":      "sunday_midnight",
+				"timestamp":          time.Now().Unix(),
+			},
+		})
+	} else {
+		log.Println("✅ Sunday midnight honey trap rotation completed successfully")
+		hfm.eventBus.Publish(bus.Event{
+			Type:   bus.EventTypeLogEvent,
+			Source: "honey_file_sentinel",
+			Target: "dashboard",
+			Payload: map[string]interface{}{
+				"agent_name":         "honey_file_sentinel",
+				"message":            "🕛 Sunday midnight rotation completed - Deception layer refreshed",
+				"internal_reasoning": "Weekly Sunday midnight rotation executed. Attacker reconnaissance data from previous week is now obsolete. Fresh honey traps deployed across randomized locations.",
+				"severity":           "info",
+				"category":           "honey_file_rotation",
+				"rotation_type":      "sunday_midnight",
+				"timestamp":          time.Now().Unix(),
+			},
+		})
+	}
 }
 
 // Stop shuts down the honey file manager
