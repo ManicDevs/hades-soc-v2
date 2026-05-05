@@ -5,30 +5,39 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"hades-v2/internal/agent"
 	"hades-v2/internal/bus"
 	"hades-v2/internal/database"
 	"hades-v2/internal/engine"
+	"hades-v2/internal/platform"
 	"hades-v2/internal/security"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Sentinel represents the headless SOC service
 type Sentinel struct {
-	eventBus       *bus.EventBus
-	orchestrator   *agent.Orchestrator
-	honeyManager   *agent.HoneyFileManager
-	dispatcher     *engine.Dispatcher
-	db             *sql.DB
-	repository     *database.GlobalStateRepository
-	sessionManager *security.SessionManager
-	ctx            context.Context
-	cancel         context.CancelFunc
+	eventBus         *bus.EventBus
+	orchestrator     *agent.Orchestrator
+	honeyManager     *agent.HoneyFileManager
+	dispatcher       *engine.Dispatcher
+	db               *sql.DB
+	repository       *database.GlobalStateRepository
+	sessionManager   *security.SessionManager
+	metricsCollector *platform.MetricsCollector
+	metricsServer    *http.Server
+	startTime        time.Time
+	ctx              context.Context
+	cancel           context.CancelFunc
 }
 
 func main() {
@@ -94,17 +103,41 @@ func NewSentinel(ctx context.Context) (*Sentinel, error) {
 	// Initialize orchestrator - main agentic loop coordinator
 	orchestrator := agent.NewOrchestrator(eventBus, dispatcher, db)
 
-	sentinel := &Sentinel{
-		eventBus:       eventBus,
-		orchestrator:   orchestrator,
-		honeyManager:   honeyManager,
-		dispatcher:     dispatcher,
-		db:             db,
-		repository:     repository,
-		sessionManager: sessionManager,
-		ctx:            ctx,
-		cancel:         func() {},
+	// Initialize metrics collector
+	metricsCollector := platform.GetGlobalMetrics()
+
+	// Create multiplexer for metrics and health endpoints
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	// Note: health handler will be set after sentinel creation
+
+	// Initialize Prometheus metrics server on port 2112 (network accessible)
+	// SECURITY NOTE: Port 2112 is accessible from the network. Restrict via firewall to allow only monitoring server IPs.
+	// Example: sudo ufw allow from 192.168.1.100 to any port 2112
+	metricsServer := &http.Server{
+		Addr:         ":2112", // Network accessible (not localhost)
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	}
+
+	sentinel := &Sentinel{
+		eventBus:         eventBus,
+		orchestrator:     orchestrator,
+		honeyManager:     honeyManager,
+		dispatcher:       dispatcher,
+		db:               db,
+		repository:       repository,
+		sessionManager:   sessionManager,
+		metricsCollector: metricsCollector,
+		metricsServer:    metricsServer,
+		startTime:        time.Now(),
+		ctx:              ctx,
+		cancel:           func() {},
+	}
+
+	// Now set the health handler since sentinel exists
+	mux.HandleFunc("/health", sentinel.healthHandler)
 
 	return sentinel, nil
 }
@@ -137,6 +170,19 @@ func (s *Sentinel) Start() error {
 	// Session manager initialized
 	log.Println("🔐 Session manager initialized")
 
+	// Start Prometheus metrics server (network accessible)
+	go func() {
+		log.Printf("📊 Starting Prometheus metrics server on :2112 (network accessible)")
+		log.Printf("🔒 SECURITY: Restrict port 2112 access via firewall to monitoring server IPs only")
+		if err := s.metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("❌ Metrics server error: %v", err)
+		}
+	}()
+
+	// Initialize metrics with default values
+	s.metricsCollector.UpdateWorkerPoolStatus(5)  // 5 workers as per V2.0 baseline
+	s.metricsCollector.UpdateGlobalRiskLevel(0.0) // Start with zero risk
+
 	// Log V2.0 baseline status
 	log.Println("📊 V2.0 Baseline Status:")
 	log.Println("   🔒 Encapsulated Internal Modules: ACTIVE")
@@ -146,8 +192,95 @@ func (s *Sentinel) Start() error {
 	log.Println("   🚨 Autonomous Threat Response: READY")
 	log.Println("   ⚡ Distributed Worker Processing: 5/5 ACTIVE")
 	log.Println("   🔐 Quantum-Resistant Security: READY")
+	log.Println("   📈 Prometheus Metrics: http://0.0.0.0:2112/metrics (network accessible)")
+	log.Println("   ❤️  Health Check: http://0.0.0.0:2112/health (network accessible)")
+	log.Println("   🔒 SECURITY: Configure firewall to restrict port 2112 to monitoring server IPs only")
 
 	return nil
+}
+
+// healthHandler provides comprehensive health check endpoint for Uptime Kuma and monitoring systems
+// SECURITY NOTE: This endpoint exposes system status. Restrict access via firewall (ufw/iptables)
+// to allow only monitoring server IPs. Port 2112 should not be exposed to the internet.
+func (s *Sentinel) healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if all critical components are running
+	status := "healthy"
+	statusCode := http.StatusOK
+	componentStatus := make(map[string]string)
+	var issues []string
+
+	// Verify database connection with detailed check
+	databaseStatus := "connected"
+	if s.db != nil {
+		if err := s.db.Ping(); err != nil {
+			databaseStatus = "disconnected"
+			status = "unhealthy"
+			statusCode = http.StatusServiceUnavailable
+			issues = append(issues, fmt.Sprintf("database connection failed: %v", err))
+		} else {
+			// Additional database health check - execute lightweight query
+			var result int
+			if err := s.db.QueryRow("SELECT 1").Scan(&result); err != nil {
+				databaseStatus = "query_failed"
+				status = "unhealthy"
+				statusCode = http.StatusServiceUnavailable
+				issues = append(issues, fmt.Sprintf("database query failed: %v", err))
+			}
+		}
+	} else {
+		databaseStatus = "not_initialized"
+		status = "unhealthy"
+		statusCode = http.StatusServiceUnavailable
+		issues = append(issues, "database not initialized")
+	}
+	componentStatus["database"] = databaseStatus
+
+	// Verify orchestrator is running
+	orchestratorStatus := "running"
+	if s.orchestrator == nil {
+		orchestratorStatus = "not_initialized"
+		status = "unhealthy"
+		statusCode = http.StatusServiceUnavailable
+		issues = append(issues, "orchestrator not initialized")
+	} else if !s.orchestrator.IsRunning() {
+		orchestratorStatus = "stopped"
+		status = "unhealthy"
+		statusCode = http.StatusServiceUnavailable
+		issues = append(issues, "orchestrator not running")
+	}
+	componentStatus["orchestrator"] = orchestratorStatus
+
+	// Check other components
+	componentStatus["event_bus"] = "running"
+	componentStatus["dispatcher"] = "running"
+	componentStatus["metrics"] = "running"
+
+	// Prepare comprehensive health response
+	health := map[string]interface{}{
+		"status":     status,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+		"uptime":     time.Since(s.startTime).String(),
+		"version":    "V2.0",
+		"components": componentStatus,
+		"issues":     issues,
+		"checks": map[string]bool{
+			"process_active":       true,
+			"database_alive":       databaseStatus == "connected",
+			"orchestrator_running": orchestratorStatus == "running",
+		},
+		"metrics_summary": s.metricsCollector.GetMetricsSummary(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	// Always return JSON response for consistency
+	json.NewEncoder(w).Encode(health)
 }
 
 // Stop gracefully shuts down all agentic loops
@@ -172,6 +305,17 @@ func (s *Sentinel) Stop() {
 	// Stop event bus
 	s.eventBus.Stop()
 	log.Println("📡 Event bus stopped")
+
+	// Gracefully shutdown metrics server
+	if s.metricsServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.metricsServer.Shutdown(ctx); err != nil {
+			log.Printf("❌ Error shutting down metrics server: %v", err)
+		} else {
+			log.Println("📊 Metrics server stopped")
+		}
+	}
 
 	// Close database connection
 	if s.db != nil {

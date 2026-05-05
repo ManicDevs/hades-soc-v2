@@ -16,6 +16,7 @@ import (
 	"hades-v2/internal/bus"
 	"hades-v2/internal/database"
 	"hades-v2/internal/engine"
+	"hades-v2/internal/platform"
 	"hades-v2/internal/security"
 	"hades-v2/internal/types"
 )
@@ -40,6 +41,7 @@ type Orchestrator struct {
 	quantumEngine interface {
 		GenerateKey(algorithm, keyType string) (interface{}, error)
 	}
+	metrics *platform.MetricsCollector
 	// Safety Governor - Permanent Safety Gates
 	safetyGovernor struct {
 		maxAutomatedBlocksPerHour int
@@ -76,6 +78,7 @@ func NewOrchestrator(eventBus *bus.EventBus, dispatcher *engine.Dispatcher, db *
 		rules:         make([]OrchestrationRule, 0),
 		agentID:       fmt.Sprintf("orchestrator_%d", time.Now().Unix()),
 		lastExecution: make(map[string]time.Time),
+		metrics:       platform.GetGlobalMetrics(),
 		safetyGovernor: struct {
 			maxAutomatedBlocksPerHour int
 			currentBlockCount         int
@@ -183,6 +186,52 @@ func (o *Orchestrator) createHandler(rule OrchestrationRule) bus.EventHandler {
 }
 
 func (o *Orchestrator) recordDecision(ruleName string, event bus.Event, action string, execTime int64, err error) {
+	// Record orchestrator decision in metrics
+	status := "success"
+	if err != nil {
+		status = "failed"
+	}
+	o.metrics.RecordOrchestratorDecision(ruleName, status)
+
+	// Update risk level based on threat severity
+	if strings.Contains(ruleName, "honey") || strings.Contains(ruleName, "lateral_movement") || strings.Contains(ruleName, "credential") {
+		// High-risk events - increase risk level significantly
+		currentRisk := o.metrics.GetCurrentRiskLevel()
+		newRisk := currentRisk + 15.0
+		if newRisk > 100 {
+			newRisk = 100
+		}
+		o.metrics.UpdateGlobalRiskLevel(newRisk)
+
+		// Record threat detection
+		if strings.Contains(ruleName, "honey") {
+			o.metrics.IncrementThreatDetected("critical")
+		} else {
+			o.metrics.IncrementThreatDetected("high")
+		}
+	} else if strings.Contains(ruleName, "vulnerability") || strings.Contains(ruleName, "exploit") {
+		// Medium-risk events - moderate risk increase
+		currentRisk := o.metrics.GetCurrentRiskLevel()
+		newRisk := currentRisk + 8.0
+		if newRisk > 100 {
+			newRisk = 100
+		}
+		o.metrics.UpdateGlobalRiskLevel(newRisk)
+		o.metrics.IncrementThreatDetected("medium")
+	} else {
+		// Low-risk events - small risk increase
+		currentRisk := o.metrics.GetCurrentRiskLevel()
+		newRisk := currentRisk + 2.0
+		if newRisk > 100 {
+			newRisk = 100
+		}
+		o.metrics.UpdateGlobalRiskLevel(newRisk)
+		o.metrics.IncrementThreatDetected("low")
+	}
+
+	// Record event processing duration
+	o.metrics.RecordEventProcessingDuration(time.Duration(execTime) * time.Millisecond)
+
 	// Build reasoning string for the agent's "internal monologue"
 	var reasoning string
 	if err != nil {

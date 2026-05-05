@@ -485,8 +485,65 @@ spec:
 
 ## 📊 Monitoring and Observability
 
+### Prometheus Metrics Integration
+The Headless Sentinel includes comprehensive Prometheus instrumentation for professional monitoring and alerting.
+
+#### **Metrics Server**
+- **Port**: 2112
+- **Endpoint**: `http://localhost:2112/metrics`
+- **Health Check**: `http://localhost:2112/health`
+
+#### **Custom SOC Metrics**
+```prometheus
+# Global risk level (0-100 scale)
+hades_global_risk_level
+
+# Total autonomous security actions
+hades_autonomous_actions_total
+
+# Threats detected by severity
+hades_threats_detected_total{severity="critical|high|medium|low"}
+
+# Orchestrator decisions by type and status
+hades_orchestrator_decisions_total{action_type="...",status="success|failed"}
+
+# Active sessions and workers
+hades_active_sessions
+hades_worker_pool_active
+
+# Event processing performance
+hades_event_processing_duration_seconds
+
+# Database operations
+hades_database_operations_total{operation="...",status="success|failed"}
+```
+
+#### **Risk Level Implementation Logic**
+The `hades_global_risk_level` gauge updates dynamically based on threat activity:
+
+```go
+// High-risk events (honey traps, lateral movement, credentials)
+if strings.Contains(ruleName, "honey") || strings.Contains(ruleName, "lateral_movement") {
+    newRisk = currentRisk + 15.0  // +15 points
+    o.metrics.IncrementThreatDetected("critical")
+}
+// Medium-risk events (vulnerabilities, exploits)  
+else if strings.Contains(ruleName, "vulnerability") {
+    newRisk = currentRisk + 8.0   // +8 points
+    o.metrics.IncrementThreatDetected("medium")
+}
+// Low-risk events (scanning, discovery)
+else {
+    newRisk = currentRisk + 2.0   // +2 points
+    o.metrics.IncrementThreatDetected("low")
+}
+```
+
 ### Health Checks
 ```bash
+# Sentinel health (Uptime Kuma compatible)
+curl http://localhost:2112/health
+
 # API health
 curl http://localhost:8080/api/health
 
@@ -494,9 +551,92 @@ curl http://localhost:8080/api/health
 curl http://localhost:8443/api/health
 ```
 
-### Metrics
+#### **Health Response Example**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-05-05T06:46:08Z",
+  "uptime": "5.311390107s",
+  "version": "V2.0",
+  "components": {
+    "orchestrator": "running",
+    "event_bus": "running",
+    "dispatcher": "running",
+    "database": "connected",
+    "metrics": "running"
+  },
+  "metrics_summary": {
+    "global_risk_level": 0,
+    "autonomous_actions": 0,
+    "active_workers": 5,
+    "threats_by_severity": {},
+    "uptime_human": "5.31150406s"
+  }
+}
+```
+
+### Prometheus Configuration
+Add to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'hades-sentinel'
+    static_configs:
+      - targets: ['localhost:2112']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+```
+
+### Grafana Dashboard
+Key panels to create:
+- **Global Risk Level** (gauge): `hades_global_risk_level`
+- **Autonomous Actions** (counter): `rate(hades_autonomous_actions_total[5m])`
+- **Threat Detection** (stacked bar): `rate(hades_threats_detected_total[5m])`
+- **Worker Pool Status** (gauge): `hades_worker_pool_active`
+- **Event Processing Latency** (histogram): `rate(hades_event_processing_duration_seconds_sum[5m])`
+
+### Alerting Rules
+Example Prometheus alerting rules:
+
+```yaml
+groups:
+  - name: hades-sentinel
+    rules:
+      - alert: HighRiskLevel
+        expr: hades_global_risk_level > 80
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hades SOC risk level is {{ $value }}"
+          
+      - alert: SentinelDown
+        expr: up{job="hades-sentinel"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hades Sentinel is down"
+          
+      - alert: HighThreatDetection
+        expr: rate(hades_threats_detected_total{severity="critical"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Critical threats detected"
+```
+
+### Uptime Kuma Integration
+1. Create new monitor in Uptime Kuma
+2. Set type to "HTTP(s)"
+3. URL: `http://your-sentinel-host:2112/health`
+4. Expected status: `200 OK`
+5. Set notification channels for mobile alerts
+
+### Traditional Metrics
 - Active connections
-- Task queue depth
+- Task queue depth  
 - Worker utilization
 - Response times
 - Error rates
