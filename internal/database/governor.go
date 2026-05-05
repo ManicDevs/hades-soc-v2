@@ -20,9 +20,9 @@ const (
 
 // EnsureTableExists checks if a table exists in the database
 func (dm *DatabaseManager) EnsureTableExists(ctx context.Context, tableName string) (bool, error) {
-	if dm.config.UseSQLite {
+	if dm.IsSQLite() {
 		var name string
-		query := `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
+		query := fmt.Sprintf(`SELECT name FROM sqlite_master WHERE type='table' AND name=%s`, dm.GetPlaceholder())
 		err := dm.primary.QueryRowContext(ctx, query, tableName).Scan(&name)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -32,12 +32,19 @@ func (dm *DatabaseManager) EnsureTableExists(ctx context.Context, tableName stri
 		}
 		return name == tableName, nil
 	} else {
+		// PostgreSQL and MySQL use information_schema
 		var exists bool
-		query := `SELECT EXISTS (
+		query := fmt.Sprintf(`SELECT EXISTS (
 			SELECT FROM information_schema.tables 
-			WHERE table_schema = 'public' AND table_name = ?
-		)`
-		err := dm.primary.QueryRowContext(ctx, query, tableName).Scan(&exists)
+			WHERE table_schema = %s AND table_name = %s
+		)`, dm.GetPlaceholderForIndex(1), dm.GetPlaceholderForIndex(2))
+
+		schema := "public"
+		if dm.IsMySQL() {
+			schema = dm.config.Database // MySQL uses database name as schema
+		}
+
+		err := dm.primary.QueryRowContext(ctx, query, schema, tableName).Scan(&exists)
 		return exists, err
 	}
 }
@@ -55,32 +62,9 @@ func (dm *DatabaseManager) CreateGovernorActionTable(ctx context.Context) error 
 		return nil
 	}
 
-	// Create table
-	query := `
-	CREATE TABLE IF NOT EXISTS governor_actions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		action_id TEXT UNIQUE NOT NULL,
-		action_name TEXT NOT NULL,
-		target TEXT NOT NULL,
-		reasoning TEXT,
-		requester TEXT,
-		status TEXT NOT NULL,
-		requires_approval BOOLEAN DEFAULT FALSE,
-		approved BOOLEAN DEFAULT FALSE,
-		requires_manual_ack BOOLEAN DEFAULT FALSE,
-		block_reason TEXT,
-		execution_time INTEGER DEFAULT 0,
-		metadata TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
-	
-	CREATE INDEX IF NOT EXISTS idx_governor_actions_created_at ON governor_actions(created_at);
-	CREATE INDEX IF NOT EXISTS idx_governor_actions_status ON governor_actions(status);
-	CREATE INDEX IF NOT EXISTS idx_governor_actions_action_id ON governor_actions(action_id);
-	`
+	var query string
 
-	if dm.config.UseSQLite {
+	if dm.IsSQLite() {
 		query = `
 		CREATE TABLE IF NOT EXISTS governor_actions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,8 +88,7 @@ func (dm *DatabaseManager) CreateGovernorActionTable(ctx context.Context) error 
 		CREATE INDEX IF NOT EXISTS idx_governor_actions_status ON governor_actions(status);
 		CREATE INDEX IF NOT EXISTS idx_governor_actions_action_id ON governor_actions(action_id);
 		`
-	} else {
-		// PostgreSQL version
+	} else if dm.IsPostgreSQL() {
 		query = `
 		CREATE TABLE IF NOT EXISTS governor_actions (
 			id SERIAL PRIMARY KEY,
@@ -129,6 +112,30 @@ func (dm *DatabaseManager) CreateGovernorActionTable(ctx context.Context) error 
 		CREATE INDEX IF NOT EXISTS idx_governor_actions_status ON governor_actions(status);
 		CREATE INDEX IF NOT EXISTS idx_governor_actions_action_id ON governor_actions(action_id);
 		`
+	} else if dm.IsMySQL() {
+		query = `
+		CREATE TABLE IF NOT EXISTS governor_actions (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			action_id VARCHAR(255) UNIQUE NOT NULL,
+			action_name VARCHAR(255) NOT NULL,
+			target VARCHAR(255) NOT NULL,
+			reasoning TEXT,
+			requester VARCHAR(255),
+			status VARCHAR(50) NOT NULL,
+			requires_approval BOOLEAN DEFAULT FALSE,
+			approved BOOLEAN DEFAULT FALSE,
+			requires_manual_ack BOOLEAN DEFAULT FALSE,
+			block_reason TEXT,
+			execution_time BIGINT DEFAULT 0,
+			metadata TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		);
+		
+		CREATE INDEX idx_governor_actions_created_at ON governor_actions(created_at);
+		CREATE INDEX idx_governor_actions_status ON governor_actions(status);
+		CREATE INDEX idx_governor_actions_action_id ON governor_actions(action_id);
+		`
 	}
 
 	_, err = dm.primary.ExecContext(ctx, query)
@@ -142,41 +149,43 @@ func (dm *DatabaseManager) CreateGovernorActionTable(ctx context.Context) error 
 
 // RecordGovernorAction records a governor action in the database
 func (dm *DatabaseManager) RecordGovernorAction(ctx context.Context, action *GovernorAction) error {
-	// Verification guard: ensure table exists
-	if _, err := dm.primary.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS governor_actions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			action_id TEXT UNIQUE NOT NULL,
-			action_name TEXT NOT NULL,
-			target TEXT NOT NULL,
-			reasoning TEXT,
-			requester TEXT,
-			status TEXT NOT NULL,
-			requires_approval BOOLEAN DEFAULT FALSE,
-			approved BOOLEAN DEFAULT FALSE,
-			requires_manual_ack BOOLEAN DEFAULT FALSE,
-			block_reason TEXT,
-			execution_time INTEGER DEFAULT 0,
-			metadata TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return fmt.Errorf("failed to ensure governor_actions table exists: %w", err)
+	// Note: Table should be created via CreateGovernorActionTable before calling this method
+
+	// Use Go-calculated timestamp instead of database functions
+	now := time.Now().UTC() // Use UTC to prevent timezone drift
+
+	// Update the action timestamps to ensure consistency
+	// Only set CreatedAt if it's zero (not explicitly set)
+	if action.CreatedAt.IsZero() {
+		action.CreatedAt = now
 	}
+	// Always update UpdatedAt to current time
+	action.UpdatedAt = now
 
-	var query string
+	// Encrypt sensitive fields before storage using helper functions
+	encryptedTarget := dm.encryptField(action.Target)
+	encryptedReasoning := dm.encryptField(action.Reasoning)
+	encryptedBlockReason := dm.encryptField(action.BlockReason)
 
-	if dm.config.UseSQLite {
-		query = `
+	var queryTemplate string
+	var args []interface{}
+
+	if dm.IsSQLite() {
+		queryTemplate = `
 		INSERT OR REPLACE INTO governor_actions (
 			action_id, action_name, target, reasoning, requester, status,
 			requires_approval, approved, requires_manual_ack, block_reason,
 			execution_time, metadata, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
-	} else {
-		query = `
+		args = []interface{}{
+			action.ActionID, action.ActionName, encryptedTarget, encryptedReasoning,
+			action.Requester, action.Status, action.RequiresApproval, action.Approved,
+			action.RequiresManualAck, encryptedBlockReason, action.ExecutionTime,
+			action.Metadata, action.CreatedAt, action.UpdatedAt,
+		}
+	} else if dm.IsPostgreSQL() {
+		queryTemplate = `
 		INSERT INTO governor_actions (
 			action_id, action_name, target, reasoning, requester, status,
 			requires_approval, approved, requires_manual_ack, block_reason,
@@ -188,16 +197,45 @@ func (dm *DatabaseManager) RecordGovernorAction(ctx context.Context, action *Gov
 			requires_manual_ack = EXCLUDED.requires_manual_ack,
 			block_reason = EXCLUDED.block_reason,
 			execution_time = EXCLUDED.execution_time,
-			updated_at = CURRENT_TIMESTAMP
+			updated_at = ?
 		`
+		args = []interface{}{
+			action.ActionID, action.ActionName, encryptedTarget, encryptedReasoning,
+			action.Requester, action.Status, action.RequiresApproval, action.Approved,
+			action.RequiresManualAck, encryptedBlockReason, action.ExecutionTime,
+			action.Metadata, action.CreatedAt, action.UpdatedAt,
+			action.UpdatedAt, // Additional parameter for the UPDATE clause
+		}
+	} else if dm.IsMySQL() {
+		queryTemplate = `
+		INSERT INTO governor_actions (
+			action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			status = VALUES(status),
+			approved = VALUES(approved),
+			requires_manual_ack = VALUES(requires_manual_ack),
+			block_reason = VALUES(block_reason),
+			execution_time = VALUES(execution_time),
+			updated_at = ?
+		`
+		args = []interface{}{
+			action.ActionID, action.ActionName, encryptedTarget, encryptedReasoning,
+			action.Requester, action.Status, action.RequiresApproval, action.Approved,
+			action.RequiresManualAck, encryptedBlockReason, action.ExecutionTime,
+			action.Metadata, action.CreatedAt, action.UpdatedAt,
+			action.UpdatedAt, // Additional parameter for the UPDATE clause
+		}
+	} else {
+		return fmt.Errorf("unsupported database type: %s", dm.config.DBType)
 	}
 
-	_, err := dm.primary.ExecContext(ctx, query,
-		action.ActionID, action.ActionName, action.Target, action.Reasoning,
-		action.Requester, action.Status, action.RequiresApproval, action.Approved,
-		action.RequiresManualAck, action.BlockReason, action.ExecutionTime,
-		action.Metadata, action.CreatedAt, action.UpdatedAt,
-	)
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	_, err := dm.primary.ExecContext(ctx, query, finalArgs...)
 
 	if err != nil {
 		return fmt.Errorf("failed to record governor action: %w", err)
@@ -208,49 +246,26 @@ func (dm *DatabaseManager) RecordGovernorAction(ctx context.Context, action *Gov
 
 // GetBlockCountInLastHour returns the number of approved actions in the last hour
 func (dm *DatabaseManager) GetBlockCountInLastHour(ctx context.Context) (int, error) {
-	// Verification guard: ensure table exists
-	if _, err := dm.primary.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS governor_actions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			action_id TEXT UNIQUE NOT NULL,
-			action_name TEXT NOT NULL,
-			target TEXT NOT NULL,
-			reasoning TEXT,
-			requester TEXT,
-			status TEXT NOT NULL,
-			requires_approval BOOLEAN DEFAULT FALSE,
-			approved BOOLEAN DEFAULT FALSE,
-			requires_manual_ack BOOLEAN DEFAULT FALSE,
-			block_reason TEXT,
-			execution_time INTEGER DEFAULT 0,
-			metadata TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return 0, fmt.Errorf("failed to ensure governor_actions table exists: %w", err)
-	}
+	// Note: Table should be created via CreateGovernorActionTable before calling this method
 
-	var query string
+	// Use Go to calculate the timestamp with UTC to prevent timezone drift
+	oneHourAgo := time.Now().UTC().Add(-1 * time.Hour)
 
-	if dm.config.UseSQLite {
-		query = `
-		SELECT COUNT(*) FROM governor_actions 
-		WHERE status = ? AND approved = ? AND created_at >= ?
-		`
-	} else {
-		query = `
-		SELECT COUNT(*) FROM governor_actions 
-		WHERE status = ? AND approved = ? AND created_at >= ?
-		`
-	}
+	// Use driver-agnostic query building
+	queryTemplate := `
+	SELECT COUNT(*) FROM governor_actions 
+	WHERE status = ? AND approved = ? AND created_at >= ?
+	`
 
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
-	var count int
-
-	err := dm.primary.QueryRowContext(ctx, query,
+	args := []interface{}{
 		GovernorActionStatusApproved, true, oneHourAgo,
-	).Scan(&count)
+	}
+
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	var count int
+	err := dm.primary.QueryRowContext(ctx, query, finalArgs...).Scan(&count)
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block count in last hour: %w", err)
@@ -261,31 +276,25 @@ func (dm *DatabaseManager) GetBlockCountInLastHour(ctx context.Context) (int, er
 
 // GetRecentActions returns recent governor actions within the specified time window
 func (dm *DatabaseManager) GetRecentActions(ctx context.Context, since time.Time, limit int) ([]*GovernorAction, error) {
-	var query string
+	// Ensure since time is in UTC for consistency
+	sinceUTC := since.UTC()
 
-	if dm.config.UseSQLite {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE created_at >= ?
-		ORDER BY created_at DESC
-		LIMIT ?
-		`
-	} else {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE created_at >= ?
-		ORDER BY created_at DESC
-		LIMIT ?
-		`
-	}
+	queryTemplate := `
+	SELECT id, action_id, action_name, target, reasoning, requester, status,
+		requires_approval, approved, requires_manual_ack, block_reason,
+		execution_time, metadata, created_at, updated_at
+	FROM governor_actions 
+	WHERE created_at >= ?
+	ORDER BY created_at DESC
+	LIMIT ?
+	`
 
-	rows, err := dm.primary.QueryContext(ctx, query, since, limit)
+	args := []interface{}{sinceUTC, limit}
+
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	rows, err := dm.primary.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent actions: %w", err)
 	}
@@ -304,6 +313,12 @@ func (dm *DatabaseManager) GetRecentActions(ctx context.Context, since time.Time
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan governor action: %w", err)
 		}
+
+		// Decrypt sensitive fields after retrieval using helper functions
+		action.Target = dm.decryptField(action.Target)
+		action.Reasoning = dm.decryptField(action.Reasoning)
+		action.BlockReason = dm.decryptField(action.BlockReason)
+
 		actions = append(actions, action)
 	}
 
@@ -314,7 +329,7 @@ func (dm *DatabaseManager) GetRecentActions(ctx context.Context, since time.Time
 	return actions, nil
 }
 
-// GetGovernorStats returns statistics for the safety governor
+// GetGovernorStats returns statistics about governor actions
 func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
@@ -325,34 +340,35 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 	}
 	stats["approved_last_hour"] = approvedLastHour
 
-	// Get total actions in last 24 hours
-	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour)
-	var query string
+	// Get total actions in last 24 hours - use Go to calculate timestamp with UTC
+	twentyFourHoursAgo := time.Now().UTC().Add(-24 * time.Hour)
 
-	if dm.config.UseSQLite {
-		query = `
-		SELECT 
-			COUNT(*) as total,
-			COUNT(CASE WHEN approved = 1 THEN 1 END) as approved,
-			COUNT(CASE WHEN requires_manual_ack = 1 THEN 1 END) as manual_ack,
-			COUNT(CASE WHEN status = ? THEN 1 END) as blocked
-		FROM governor_actions 
-		WHERE created_at >= ?
-		`
-	} else {
-		query = `
-		SELECT 
-			COUNT(*) as total,
-			COUNT(CASE WHEN approved = true THEN 1 END) as approved,
-			COUNT(CASE WHEN requires_manual_ack = true THEN 1 END) as manual_ack,
-			COUNT(CASE WHEN status = ? THEN 1 END) as blocked
-		FROM governor_actions 
-		WHERE created_at >= ?
-		`
+	// Use driver-agnostic query building
+	queryTemplate := `
+	SELECT 
+		COUNT(*) as total,
+		COUNT(CASE WHEN approved = ? THEN 1 END) as approved,
+		COUNT(CASE WHEN requires_manual_ack = ? THEN 1 END) as manual_ack,
+		COUNT(CASE WHEN status = ? THEN 1 END) as blocked
+	FROM governor_actions 
+	WHERE created_at >= ?
+	`
+
+	// Use appropriate boolean values for the database type
+	var approvedValue interface{} = true
+	if dm.IsSQLite() {
+		approvedValue = 1 // SQLite uses integer for boolean
 	}
 
+	args := []interface{}{
+		approvedValue, approvedValue, GovernorActionStatusBlocked, twentyFourHoursAgo,
+	}
+
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
 	var total, approved, manualAck, blocked int
-	err = dm.primary.QueryRowContext(ctx, query, GovernorActionStatusBlocked, twentyFourHoursAgo).Scan(
+	err = dm.primary.QueryRowContext(ctx, query, finalArgs...).Scan(
 		&total, &approved, &manualAck, &blocked,
 	)
 	if err != nil {
@@ -364,24 +380,24 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 	stats["manual_ack_last_24h"] = manualAck
 	stats["blocked_last_24h"] = blocked
 
-	// Get time until next reset (when oldest approved action is 1 hour old)
-	var resetQuery string
+	// Get time until next reset - use Go to calculate timestamps with UTC
+	oneHourAgo := time.Now().UTC().Add(-1 * time.Hour)
+	resetQueryTemplate := `
+	SELECT MIN(created_at) FROM governor_actions 
+	WHERE approved = ? AND created_at >= ?
+	`
 
-	if dm.config.UseSQLite {
-		resetQuery = `
-		SELECT MIN(created_at) FROM governor_actions 
-		WHERE approved = ? AND created_at >= ?
-		`
-	} else {
-		resetQuery = `
-		SELECT MIN(created_at) FROM governor_actions 
-		WHERE approved = ? AND created_at >= ?
-		`
+	// Use appropriate boolean value for the database type
+	var resetApprovedValue interface{} = true
+	if dm.IsSQLite() {
+		resetApprovedValue = 1
 	}
 
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	resetArgs := []interface{}{resetApprovedValue, oneHourAgo}
+	resetQuery, resetFinalArgs := dm.BuildQuery(resetQueryTemplate, resetArgs...)
+
 	var oldestApprovedStr sql.NullString
-	err = dm.primary.QueryRowContext(ctx, resetQuery, true, oneHourAgo).Scan(&oldestApprovedStr)
+	err = dm.primary.QueryRowContext(ctx, resetQuery, resetFinalArgs...).Scan(&oldestApprovedStr)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("failed to get oldest approved action: %w", err)
 	}
@@ -425,28 +441,21 @@ func (dm *DatabaseManager) GetGovernorStats(ctx context.Context) (map[string]int
 
 // GetGovernorActionByID retrieves a specific governor action by its action_id
 func (dm *DatabaseManager) GetGovernorActionByID(ctx context.Context, actionID string) (*GovernorAction, error) {
-	var query string
+	queryTemplate := `
+	SELECT id, action_id, action_name, target, reasoning, requester, status,
+		requires_approval, approved, requires_manual_ack, block_reason,
+		execution_time, metadata, created_at, updated_at
+	FROM governor_actions 
+	WHERE action_id = ?
+	`
 
-	if dm.config.UseSQLite {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE action_id = ?
-		`
-	} else {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE action_id = ?
-		`
-	}
+	args := []interface{}{actionID}
+
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
 
 	action := &GovernorAction{}
-	err := dm.primary.QueryRowContext(ctx, query, actionID).Scan(
+	err := dm.primary.QueryRowContext(ctx, query, finalArgs...).Scan(
 		&action.ID, &action.ActionID, &action.ActionName, &action.Target,
 		&action.Reasoning, &action.Requester, &action.Status,
 		&action.RequiresApproval, &action.Approved, &action.RequiresManualAck,
@@ -461,36 +470,42 @@ func (dm *DatabaseManager) GetGovernorActionByID(ctx context.Context, actionID s
 		return nil, fmt.Errorf("failed to get governor action by ID: %w", err)
 	}
 
+	// Decrypt sensitive fields after retrieval using helper functions
+	action.Target = dm.decryptField(action.Target)
+	action.Reasoning = dm.decryptField(action.Reasoning)
+	action.BlockReason = dm.decryptField(action.BlockReason)
+
 	return action, nil
 }
 
 // UpdateGovernorAction updates an existing governor action
 func (dm *DatabaseManager) UpdateGovernorAction(ctx context.Context, action *GovernorAction) error {
-	var query string
+	// Use Go-calculated timestamp with UTC to prevent timezone drift
+	action.UpdatedAt = time.Now().UTC()
 
-	if dm.config.UseSQLite {
-		query = `
-		UPDATE governor_actions 
-		SET action_name = ?, target = ?, reasoning = ?, requester = ?, status = ?,
-			requires_approval = ?, approved = ?, requires_manual_ack = ?, block_reason = ?,
-			execution_time = ?, metadata = ?, updated_at = ?
-		WHERE id = ?
-		`
-	} else {
-		query = `
-		UPDATE governor_actions 
-		SET action_name = ?, target = ?, reasoning = ?, requester = ?, status = ?,
-			requires_approval = ?, approved = ?, requires_manual_ack = ?, block_reason = ?,
-			execution_time = ?, metadata = ?, updated_at = ?
-		WHERE id = ?
-		`
+	queryTemplate := `
+	UPDATE governor_actions 
+	SET action_name = ?, target = ?, reasoning = ?, requester = ?, status = ?,
+		requires_approval = ?, approved = ?, requires_manual_ack = ?, block_reason = ?,
+		execution_time = ?, metadata = ?, updated_at = ?
+	WHERE id = ?
+	`
+
+	// Encrypt sensitive fields before update using helper functions
+	encryptedTarget := dm.encryptField(action.Target)
+	encryptedReasoning := dm.encryptField(action.Reasoning)
+	encryptedBlockReason := dm.encryptField(action.BlockReason)
+
+	args := []interface{}{
+		action.ActionName, encryptedTarget, encryptedReasoning, action.Requester, action.Status,
+		action.RequiresApproval, action.Approved, action.RequiresManualAck, encryptedBlockReason,
+		action.ExecutionTime, action.Metadata, action.UpdatedAt, action.ID,
 	}
 
-	_, err := dm.primary.ExecContext(ctx, query,
-		action.ActionName, action.Target, action.Reasoning, action.Requester, action.Status,
-		action.RequiresApproval, action.Approved, action.RequiresManualAck, action.BlockReason,
-		action.ExecutionTime, action.Metadata, action.UpdatedAt, action.ID,
-	)
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	_, err := dm.primary.ExecContext(ctx, query, finalArgs...)
 
 	if err != nil {
 		return fmt.Errorf("failed to update governor action: %w", err)
@@ -501,30 +516,23 @@ func (dm *DatabaseManager) UpdateGovernorAction(ctx context.Context, action *Gov
 
 // GetPendingActions returns actions that require manual approval
 func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAction, error) {
-	var query string
+	queryTemplate := `
+	SELECT id, action_id, action_name, target, reasoning, requester, status,
+		requires_approval, approved, requires_manual_ack, block_reason,
+		execution_time, metadata, created_at, updated_at
+	FROM governor_actions 
+	WHERE status = ? OR status = ?
+	ORDER BY created_at DESC
+	`
 
-	if dm.config.UseSQLite {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE status = ? OR status = ?
-		ORDER BY created_at DESC
-		`
-	} else {
-		query = `
-		SELECT id, action_id, action_name, target, reasoning, requester, status,
-			requires_approval, approved, requires_manual_ack, block_reason,
-			execution_time, metadata, created_at, updated_at
-		FROM governor_actions 
-		WHERE status = ? OR status = ?
-		ORDER BY created_at DESC
-		`
+	args := []interface{}{
+		GovernorActionStatusManualAckRequired, GovernorActionStatusPending,
 	}
 
-	rows, err := dm.primary.QueryContext(ctx, query,
-		GovernorActionStatusManualAckRequired, GovernorActionStatusPending)
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	rows, err := dm.primary.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending actions: %w", err)
 	}
@@ -543,6 +551,12 @@ func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAc
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan pending action: %w", err)
 		}
+
+		// Decrypt sensitive fields after retrieval using helper functions
+		action.Target = dm.decryptField(action.Target)
+		action.Reasoning = dm.decryptField(action.Reasoning)
+		action.BlockReason = dm.decryptField(action.BlockReason)
+
 		actions = append(actions, action)
 	}
 
@@ -555,16 +569,16 @@ func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAc
 
 // CleanupOldGovernorActions removes actions older than the specified duration
 func (dm *DatabaseManager) CleanupOldGovernorActions(ctx context.Context, olderThan time.Duration) error {
-	var query string
+	queryTemplate := `DELETE FROM governor_actions WHERE created_at < ?`
 
-	if dm.config.UseSQLite {
-		query = `DELETE FROM governor_actions WHERE created_at < ?`
-	} else {
-		query = `DELETE FROM governor_actions WHERE created_at < ?`
-	}
+	// Use Go-calculated timestamp with UTC to prevent timezone drift
+	cutoff := time.Now().UTC().Add(-olderThan)
+	args := []interface{}{cutoff}
 
-	cutoff := time.Now().Add(-olderThan)
-	result, err := dm.primary.ExecContext(ctx, query, cutoff)
+	// Build driver-agnostic query
+	query, finalArgs := dm.BuildQuery(queryTemplate, args...)
+
+	result, err := dm.primary.ExecContext(ctx, query, finalArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old governor actions: %w", err)
 	}

@@ -79,7 +79,7 @@ func NewSentinel(ctx context.Context) (*Sentinel, error) {
 	}
 
 	// Initialize repository
-	repository := database.NewGlobalStateRepository(db)
+	repository := database.NewGlobalStateRepository(db, database.GetManager())
 
 	// Initialize event bus - central nervous system
 	eventBus := bus.New()

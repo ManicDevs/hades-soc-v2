@@ -91,7 +91,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 
 	if o.db != nil {
-		o.decisionRepo = database.NewGlobalStateRepository(o.db)
+		o.decisionRepo = database.NewGlobalStateRepository(o.db, database.GetManager())
 	}
 
 	o.startTime = time.Now()

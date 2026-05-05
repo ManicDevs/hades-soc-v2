@@ -90,7 +90,7 @@ func NewDispatcherWithDB(config *DispatcherConfig, db *sql.DB) *Dispatcher {
 	}
 
 	if db != nil {
-		d.stateRepo = database.NewGlobalStateRepository(db)
+		d.stateRepo = database.NewGlobalStateRepository(db, database.GetManager())
 	}
 
 	return d

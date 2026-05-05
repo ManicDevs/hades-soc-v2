@@ -9,10 +9,11 @@ import (
 
 type GlobalStateRepository struct {
 	db *sql.DB
+	dm *DatabaseManager
 }
 
-func NewGlobalStateRepository(db *sql.DB) *GlobalStateRepository {
-	return &GlobalStateRepository{db: db}
+func NewGlobalStateRepository(db *sql.DB, dm *DatabaseManager) *GlobalStateRepository {
+	return &GlobalStateRepository{db: db, dm: dm}
 }
 
 func (r *GlobalStateRepository) Create(state *GlobalState) error {
@@ -20,6 +21,11 @@ func (r *GlobalStateRepository) Create(state *GlobalState) error {
 	if err != nil {
 		metadataJSON = []byte("{}")
 	}
+
+	// Encrypt sensitive fields before storage
+	encryptedTarget := r.dm.encryptField(state.Target)
+	encryptedErrorMessage := r.dm.encryptField(state.ErrorMessage)
+	encryptedResultSummary := r.dm.encryptField(state.ResultSummary)
 
 	query := `
 		INSERT INTO global_states (
@@ -36,9 +42,9 @@ func (r *GlobalStateRepository) Create(state *GlobalState) error {
 
 	err = r.db.QueryRow(
 		query,
-		state.TaskID, state.TaskType, state.Status, state.Target, state.TargetType,
+		state.TaskID, state.TaskType, state.Status, encryptedTarget, state.TargetType,
 		state.AgentID, state.ModuleName, state.PolicyID, state.WorkflowID,
-		state.Severity, state.ErrorMessage, state.ResultSummary, metadataJSON,
+		state.Severity, encryptedErrorMessage, encryptedResultSummary, metadataJSON,
 		state.StartedAt, state.CreatedAt, state.UpdatedAt,
 	).Scan(&state.ID)
 
@@ -55,6 +61,10 @@ func (r *GlobalStateRepository) Update(state *GlobalState) error {
 		metadataJSON = []byte("{}")
 	}
 
+	// Encrypt sensitive fields before update
+	encryptedErrorMessage := r.dm.encryptField(state.ErrorMessage)
+	encryptedResultSummary := r.dm.encryptField(state.ResultSummary)
+
 	query := `
 		UPDATE global_states SET
 			status = $1, agent_id = $2, error_message = $3,
@@ -66,8 +76,8 @@ func (r *GlobalStateRepository) Update(state *GlobalState) error {
 
 	_, err = r.db.Exec(
 		query,
-		state.Status, state.AgentID, state.ErrorMessage,
-		state.ResultSummary, metadataJSON, state.CompletedAt, state.UpdatedAt, state.ID,
+		state.Status, state.AgentID, encryptedErrorMessage,
+		encryptedResultSummary, metadataJSON, state.CompletedAt, state.UpdatedAt, state.ID,
 	)
 
 	if err != nil {
@@ -105,6 +115,12 @@ func (r *GlobalStateRepository) GetByID(id int) (*GlobalState, error) {
 	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
+
+	// Decrypt sensitive fields after retrieval
+	state.Target = r.dm.decryptField(state.Target)
+	state.ErrorMessage = r.dm.decryptField(state.ErrorMessage)
+	state.ResultSummary = r.dm.decryptField(state.ResultSummary)
+
 	return state, nil
 }
 
@@ -136,6 +152,12 @@ func (r *GlobalStateRepository) GetByTaskID(taskID string) (*GlobalState, error)
 	if err := json.Unmarshal(metadataJSON, &state.Metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
+
+	// Decrypt sensitive fields after retrieval
+	state.Target = r.dm.decryptField(state.Target)
+	state.ErrorMessage = r.dm.decryptField(state.ErrorMessage)
+	state.ResultSummary = r.dm.decryptField(state.ResultSummary)
+
 	return state, nil
 }
 
