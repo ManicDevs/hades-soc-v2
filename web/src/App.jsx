@@ -20,7 +20,7 @@ import SIEM from './pages/SIEM'
 import IncidentResponse from './pages/IncidentResponse'
 import ThreatModeling from './pages/ThreatModeling'
 import Kubernetes from './pages/Kubernetes'
-import { AuthProvider, useAuth } from './hooks/useAuth'
+import { AuthProvider, useAuth } from './hooks/useAuth?t=1778101000'
 import { AgentEventProvider } from './context/AgentEventContext'
 import AgentActivityPanel from './components/AgentActivityPanel'
 

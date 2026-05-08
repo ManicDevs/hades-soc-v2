@@ -37,6 +37,8 @@ func (ie *IncidentEndpoints) registerRoutes() {
 	ie.router.HandleFunc("/api/v2/incident/playbooks", ie.handleGetPlaybooks)
 	ie.router.HandleFunc("/api/v2/incident/incidents", ie.handleIncidents)
 	ie.router.HandleFunc("/api/v2/incident/actions", ie.handleGetResponseActions)
+	ie.router.HandleFunc("/api/v2/incident/response-actions", ie.handleGetResponseActions)
+	ie.router.HandleFunc("/api/v2/incident/active-responses", ie.handleGetActiveResponses)
 	ie.router.HandleFunc("/api/v2/incident/status", ie.handleGetStatus)
 }
 
@@ -151,6 +153,43 @@ func (ie *IncidentEndpoints) handleGetStatus(w http.ResponseWriter, r *http.Requ
 	}
 
 	WriteJSONResponse(w, response)
+}
+
+// handleGetActiveResponses handles getting active responses
+func (ie *IncidentEndpoints) handleGetActiveResponses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	activeResponses := map[string]interface{}{
+		"active_responses": []map[string]interface{}{
+			{
+				"id":          "AR-001",
+				"incident_id": "INC-001",
+				"type":        "isolation",
+				"status":      "running",
+				"target":      "192.168.1.100",
+				"started_at":  "2026-05-05T23:11:00Z",
+				"duration":    "5m",
+				"description": "Isolating compromised host from network",
+			},
+			{
+				"id":          "AR-002",
+				"incident_id": "INC-002",
+				"type":        "containment",
+				"status":      "completed",
+				"target":      "10.0.0.50",
+				"started_at":  "2026-05-05T23:10:00Z",
+				"duration":    "2m",
+				"description": "Containing lateral movement attempt",
+			},
+		},
+		"count":     2,
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, activeResponses)
 }
 
 // GetRouter returns the incident endpoints router

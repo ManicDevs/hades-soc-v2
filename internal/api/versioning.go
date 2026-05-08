@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Custom context key types to avoid staticcheck SA1029
+type versioningContextKey string
+
+const (
+	versioningAPIVersionKey versioningContextKey = "api_version"
+)
+
 // APIVersion represents an API version with metadata
 type APIVersion struct {
 	Version     string     `json:"version"`
@@ -127,7 +134,7 @@ func (vm *VersioningMiddleware) VersionHandler(version string, handler http.Hand
 		}
 
 		// Add version context to request
-		ctx := context.WithValue(r.Context(), apiVersionKey, version)
+		ctx := context.WithValue(r.Context(), versioningAPIVersionKey, version)
 		handler(w, r.WithContext(ctx))
 	}
 }

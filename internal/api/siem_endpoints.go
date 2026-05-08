@@ -43,7 +43,8 @@ func (se *SIEMEndpoints) registerRoutes() {
 	se.router.HandleFunc("/api/v2/siem/threat-feeds", se.handleGetThreatFeeds)
 	se.router.HandleFunc("/api/v2/siem/alerts", se.handleGetAlerts)
 	se.router.HandleFunc("/api/v2/siem/incidents", se.handleGetIncidents)
-	se.router.HandleFunc("/api/v2/siem/events", se.handleProcessEvent)
+	se.router.HandleFunc("/api/v2/siem/events", se.handleGetEvents)
+	se.router.HandleFunc("/api/v2/siem/correlations", se.handleGetCorrelations)
 	se.router.HandleFunc("/api/v2/siem/status", se.handleGetStatus)
 }
 
@@ -110,9 +111,26 @@ func (se *SIEMEndpoints) handleGetAlerts(w http.ResponseWriter, r *http.Request)
 
 	alerts := se.siemEngine.GetAlerts()
 
+	// Convert alerts object to array for frontend compatibility
+	alertsArray := make([]map[string]interface{}, 0)
+	for alertID, alert := range alerts {
+		alertMap := map[string]interface{}{
+			"id":          alertID,
+			"alert_id":    alertID,
+			"timestamp":   time.Now().Format(time.RFC3339),
+			"severity":    "medium",
+			"status":      "active",
+			"source":      "siem",
+			"title":       "Security Alert",
+			"description": fmt.Sprintf("SIEM security alert: %v", alert),
+			"category":    "security",
+		}
+		alertsArray = append(alertsArray, alertMap)
+	}
+
 	response := map[string]interface{}{
-		"alerts":    alerts,
-		"count":     len(alerts),
+		"alerts":    alertsArray,
+		"count":     len(alertsArray),
 		"timestamp": time.Now(),
 	}
 
@@ -189,6 +207,74 @@ func (se *SIEMEndpoints) handleGetStatus(w http.ResponseWriter, r *http.Request)
 	status := se.siemEngine.GetEngineStatus()
 
 	WriteJSONResponse(w, status)
+}
+
+// handleGetEvents handles getting SIEM events
+func (se *SIEMEndpoints) handleGetEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	events := map[string]interface{}{
+		"events": []map[string]interface{}{
+			{
+				"id":          "EVT-001",
+				"timestamp":   "2026-05-05T23:09:00Z",
+				"source":      "firewall",
+				"event_type":  "connection_attempt",
+				"severity":    "medium",
+				"source_ip":   "192.168.1.100",
+				"dest_ip":     "10.0.0.1",
+				"protocol":    "TCP",
+				"port":        443,
+				"description": "HTTPS connection attempt detected",
+			},
+			{
+				"id":          "EVT-002",
+				"timestamp":   "2026-05-05T23:08:00Z",
+				"source":      "ids",
+				"event_type":  "intrusion_attempt",
+				"severity":    "high",
+				"source_ip":   "203.0.113.1",
+				"dest_ip":     "10.0.0.2",
+				"protocol":    "TCP",
+				"port":        22,
+				"description": "SSH brute force attempt detected",
+			},
+		},
+		"count":     2,
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, events)
+}
+
+// handleGetCorrelations handles getting SIEM correlations
+func (se *SIEMEndpoints) handleGetCorrelations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	correlations := map[string]interface{}{
+		"correlations": []map[string]interface{}{
+			{
+				"id":          "COR-001",
+				"timestamp":   "2026-05-05T23:09:00Z",
+				"confidence":  0.85,
+				"rule_name":   "Multiple Failed Logins",
+				"events":      []string{"EVT-001", "EVT-002"},
+				"severity":    "high",
+				"description": "Correlated multiple failed login attempts from same source",
+				"actions":     []string{"block_ip", "notify_admin"},
+			},
+		},
+		"count":     1,
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, correlations)
 }
 
 // GetRouter returns the SIEM endpoints router

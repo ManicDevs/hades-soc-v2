@@ -9,6 +9,38 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+func getClaimsFromRequest(r *http.Request) (*JWTClaims, bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return nil, false
+	}
+	tokenParts := strings.Split(authHeader, " ")
+	if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+		return nil, false
+	}
+	tokenString := tokenParts[1]
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		if err := initAuthConfig(); err != nil {
+			return nil, err
+		}
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		return nil, false
+	}
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok {
+		return nil, false
+	}
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+		return nil, false
+	}
+	return claims, true
+}
+
 // JWTClaims represents the JWT token claims
 type JWTClaims struct {
 	UserID   int    `json:"user_id"`
@@ -41,6 +73,9 @@ func (s *Server) JWTMiddleware(next http.Handler) http.Handler {
 			// Validate signing method
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
+			}
+			if err := initAuthConfig(); err != nil {
+				return nil, err
 			}
 			return jwtSecret, nil
 		})
@@ -123,6 +158,9 @@ func (s *Server) OptionalAuth(next http.Handler) http.Handler {
 		token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
+			}
+			if err := initAuthConfig(); err != nil {
+				return nil, err
 			}
 			return jwtSecret, nil
 		})

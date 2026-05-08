@@ -1,17 +1,33 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
     port: 3000,
-    host: true
+    host: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8443',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: './src/main.jsx',
+      },
+    },
   },
-  // Handle SPA routing for production
-  preview: {
-    port: 3000
-  }
 })

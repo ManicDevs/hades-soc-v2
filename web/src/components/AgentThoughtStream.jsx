@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
+// Cache bust: 2026-05-05-22-04-30
+
 export const AgentThoughtStream = ({ maxItems = 100, className = '' }) => {
   const [events, setEvents] = useState([])
   const [isConnected, setIsConnected] = useState(false)
@@ -9,7 +11,8 @@ export const AgentThoughtStream = ({ maxItems = 100, className = '' }) => {
   const [autoScroll, setAutoScroll] = useState(true)
 
   useEffect(() => {
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/agent-stream`
+    // Use backend port 8080 for WebSocket connection
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//192.168.0.2:8080/ws/agent-stream`
     
     const connect = () => {
       const ws = new WebSocket(wsUrl)

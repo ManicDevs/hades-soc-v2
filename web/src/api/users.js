@@ -5,12 +5,16 @@ export const usersAPI = {
   // Get all users
   getUsers: async (filters = {}) => {
     const params = new URLSearchParams(filters)
-    return await API_CONFIG.request(`/users?${params}`)
+    return await API_CONFIG.request(`/users?${params}`, {
+      method: 'GET'
+    })
   },
 
   // Get user by ID
   getUser: async (id) => {
-    return await API_CONFIG.request(`/users/${id}`)
+    return await API_CONFIG.request(`/users/${id}`, {
+      method: 'GET'
+    })
   },
 
   // Create user
@@ -38,11 +42,15 @@ export const usersAPI = {
 
   // Get user statistics
   getUserStats: async () => {
-    return await API_CONFIG.request('/users/stats')
+    return await API_CONFIG.request('/users/stats', {
+      method: 'GET'
+    })
   },
 
   // Get user roles
   getUserRoles: async () => {
-    return await API_CONFIG.request('/users/roles')
+    return await API_CONFIG.request('/users/roles', {
+      method: 'GET'
+    })
   },
 }

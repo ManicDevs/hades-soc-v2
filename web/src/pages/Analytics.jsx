@@ -211,29 +211,31 @@ function Analytics({ user }) {
             </h2>
           </div>
           <div className="p-4 max-h-96 overflow-y-auto">
-            {Object.entries(metrics).map(([key, value]) => (
+            {Array.isArray(metrics) ? metrics.map((metric, index) => (
               <div 
-                key={key} 
+                key={index} 
                 className="mb-4 p-3 bg-gray-900 rounded-lg border border-gray-700 cursor-pointer hover:border-hades-primary"
-                onClick={() => setSelectedMetric({ name: key, value, description: `${key} performance metric` })}
+                onClick={() => setSelectedMetric({ name: metric.metric_name || `Metric ${index}`, value: metric.value || 0, description: metric.description || `${metric.metric_name || 'Metric'} performance metric` })}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-white font-medium">{key.replace(/_/g, ' ').toUpperCase()}</h3>
-                    <p className="text-gray-400 text-sm">{key.replace(/_/g, ' ').toUpperCase()} performance metric</p>
+                    <h3 className="text-white font-medium">{metric.metric_name || `Metric ${index}`}</h3>
+                    <p className="text-gray-400 text-sm">{metric.description || `${metric.metric_name || 'Metric'} performance metric`}</p>
                     <div className="flex items-center mt-2 space-x-4">
                       <span className="text-xs text-gray-400">
-                        Current: {value}%
+                        Current: {typeof metric.value === 'number' ? metric.value : 'N/A'}%
                       </span>
-                      <span className={`text-xs ${getAccuracyColor(value)}`}>
-                        {value}% performance
+                      <span className={`text-xs ${getAccuracyColor(typeof metric.value === 'number' ? metric.value : 0)}`}>
+                        {typeof metric.value === 'number' ? metric.value : 'N/A'}% performance
                       </span>
                     </div>
                   </div>
                   <Activity className="w-5 h-5 text-blue-400" />
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-gray-400 text-sm">No metrics available</div>
+            )}
           </div>
         </div>
 

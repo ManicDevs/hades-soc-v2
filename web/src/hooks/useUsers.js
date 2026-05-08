@@ -26,6 +26,27 @@ export const useUsers = () => {
     try {
       const usersData = await usersAPI.getUsers(filters)
       setUsers(usersData)
+      
+      // Calculate stats from users data
+      const calculatedStats = {
+        total_users: usersData?.length || 0,
+        active_users: usersData?.filter(user => user.status === 'active')?.length || 0,
+        inactive_users: usersData?.filter(user => user.status === 'inactive')?.length || 0,
+        by_role: usersData?.reduce((acc, user) => {
+          acc[user.role] = (acc[user.role] || 0) + 1
+          return acc
+        }, {}) || {},
+        by_status: usersData?.reduce((acc, user) => {
+          acc[user.status] = (acc[user.status] || 0) + 1
+          return acc
+        }, {}) || {}
+      }
+      setStats(calculatedStats)
+      
+      // Extract unique roles from users data
+      const uniqueRoles = [...new Set(usersData?.map(user => user.role) || [])]
+      setRoles(uniqueRoles)
+      
     } catch (error) {
       setError('Failed to fetch users')
       console.error('Users fetch error:', error)
@@ -35,21 +56,11 @@ export const useUsers = () => {
   }
 
   const fetchUserStats = async () => {
-    try {
-      const statsData = await usersAPI.getUserStats()
-      setStats(statsData)
-    } catch (error) {
-      console.error('User stats fetch error:', error)
-    }
+    // Stats are now calculated in fetchUsers to avoid broken endpoint
   }
 
   const fetchUserRoles = async () => {
-    try {
-      const rolesData = await usersAPI.getUserRoles()
-      setRoles(rolesData)
-    } catch (error) {
-      console.error('User roles fetch error:', error)
-    }
+    // Roles are now extracted in fetchUsers to avoid broken endpoint
   }
 
   const createUser = async (userData) => {

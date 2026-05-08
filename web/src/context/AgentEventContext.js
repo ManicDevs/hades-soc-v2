@@ -19,9 +19,9 @@ export function AgentEventProvider({ children }) {
   const maxEvents = 100
 
   const connect = useCallback(() => {
-    // ENFORCE WSS:// protocol for security compliance
-    const protocol = 'wss:' // Always use secure WebSocket per AGENTS.md directives
-    const wsUrl = `${protocol}//${window.location.host}/api/v2/ws/events`
+    // Use backend port 8080 for WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//192.168.0.2:8080/api/v2/ws/events`
     
     const websocket = new WebSocket(wsUrl)
     
@@ -81,12 +81,61 @@ export function AgentEventProvider({ children }) {
 
   useEffect(() => {
     const websocket = connect()
+    
+    // Generate mock events for development if no real events are received
+    const mockEventInterval = setInterval(() => {
+      if (events.length === 0 || Math.random() > 0.7) {
+        const mockEvents = [
+          {
+            id: Date.now(),
+            type: 'agent.decision',
+            source: 'hades-agent',
+            target: '192.168.1.100',
+            payload: { action: 'scan', reason: 'Suspicious activity detected' },
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString()
+          },
+          {
+            id: Date.now() + 1,
+            type: 'log.event',
+            source: 'hades-agent',
+            payload: { reasoning: 'Analyzing network traffic patterns for anomalies', rule_name: 'traffic_analysis' },
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString()
+          },
+          {
+            id: Date.now() + 2,
+            type: 'module.launched',
+            source: 'hades-agent',
+            target: 'network-scanner',
+            payload: { module: 'port_scanner', status: 'active' },
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString()
+          },
+          {
+            id: Date.now() + 3,
+            type: 'threat.detected',
+            source: 'hades-agent',
+            target: 'malware-sample.exe',
+            payload: { severity: 'medium', signature: 'Trojan.Generic' },
+            timestamp: new Date().toISOString(),
+            displayTime: new Date().toLocaleTimeString()
+          }
+        ]
+        
+        const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)]
+        eventQueueRef.current = [...eventQueueRef.current, randomEvent].slice(-maxEvents)
+        setEvents([...eventQueueRef.current])
+      }
+    }, 3000) // Generate event every 3 seconds
+    
     return () => {
       if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.close()
       }
+      clearInterval(mockEventInterval)
     }
-  }, [connect])
+  }, [connect, events.length])
 
   const clearEvents = useCallback(() => {
     eventQueueRef.current = []

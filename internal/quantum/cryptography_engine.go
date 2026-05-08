@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -14,11 +15,12 @@ import (
 
 // CryptographyEngine provides quantum-resistant cryptographic capabilities
 type CryptographyEngine struct {
-	db         database.Database
-	algorithms map[string]*QuantumAlgorithm
-	keys       map[string]*QuantumKey
-	signatures map[string]*QuantumSignature
-	mu         sync.RWMutex
+	db              database.Database
+	algorithms      map[string]*QuantumAlgorithm
+	keys            map[string]*QuantumKey
+	signatures      map[string]*QuantumSignature
+	allowSimulation bool
+	mu              sync.RWMutex
 }
 
 // QuantumAlgorithm represents a quantum-resistant algorithm
@@ -128,10 +130,11 @@ type VerificationResponse struct {
 // NewCryptographyEngine creates a new quantum cryptography engine
 func NewCryptographyEngine(db database.Database) (*CryptographyEngine, error) {
 	engine := &CryptographyEngine{
-		db:         db,
-		algorithms: make(map[string]*QuantumAlgorithm),
-		keys:       make(map[string]*QuantumKey),
-		signatures: make(map[string]*QuantumSignature),
+		db:              db,
+		algorithms:      make(map[string]*QuantumAlgorithm),
+		keys:            make(map[string]*QuantumKey),
+		signatures:      make(map[string]*QuantumSignature),
+		allowSimulation: os.Getenv("HADES_ALLOW_SIMULATED_CRYPTO") == "true",
 	}
 
 	// Initialize quantum-resistant algorithms
@@ -273,6 +276,10 @@ func (qce *CryptographyEngine) initializeAlgorithms() error {
 
 // GenerateKey generates a new quantum-resistant key
 func (qce *CryptographyEngine) GenerateKey(algorithm, keyType string) (*QuantumKey, error) {
+	if algorithm == "" {
+		algorithm = "kyber1024"
+	}
+
 	qce.mu.Lock()
 	defer qce.mu.Unlock()
 
@@ -546,7 +553,9 @@ func (qce *CryptographyEngine) GetEngineStatus() map[string]interface{} {
 
 // generateKEMKey generates a KEM key pair
 func (qce *CryptographyEngine) generateKEMKey(key *QuantumKey, alg *QuantumAlgorithm) error {
-	// Simulate KEM key generation
+	if err := qce.ensureSimulationAllowed("KEM key generation"); err != nil {
+		return err
+	}
 	publicKey, err := qce.generateRandomBytes(alg.KeySize)
 	if err != nil {
 		return err
@@ -565,7 +574,9 @@ func (qce *CryptographyEngine) generateKEMKey(key *QuantumKey, alg *QuantumAlgor
 
 // generateSignatureKey generates a signature key pair
 func (qce *CryptographyEngine) generateSignatureKey(key *QuantumKey, alg *QuantumAlgorithm) error {
-	// Simulate signature key generation
+	if err := qce.ensureSimulationAllowed("signature key generation"); err != nil {
+		return err
+	}
 	publicKey, err := qce.generateRandomBytes(alg.KeySize)
 	if err != nil {
 		return err
@@ -597,17 +608,18 @@ func (qce *CryptographyEngine) generateSymmetricKey(key *QuantumKey, alg *Quantu
 
 // encryptKEM encrypts using KEM
 func (qce *CryptographyEngine) encryptKEM(plaintext string, key *QuantumKey, alg *QuantumAlgorithm) (string, error) {
-	// Simulate KEM encryption
-	// In a real implementation, this would use the actual KEM algorithm
+	if err := qce.ensureSimulationAllowed("KEM encryption"); err != nil {
+		return "", err
+	}
 	hash := sha256.Sum256([]byte(plaintext + key.PublicKey))
 	return hex.EncodeToString(hash[:]), nil
 }
 
 // decryptKEM decrypts using KEM
 func (qce *CryptographyEngine) decryptKEM(ciphertext string, key *QuantumKey, alg *QuantumAlgorithm) (string, error) {
-	// Simulate KEM decryption
-	// In a real implementation, this would use the actual KEM algorithm
-	// For simulation, we'll just return a placeholder
+	if err := qce.ensureSimulationAllowed("KEM decryption"); err != nil {
+		return "", err
+	}
 	return "decrypted_" + ciphertext[:min(len(ciphertext), 32)], nil
 }
 
@@ -652,16 +664,18 @@ func (qce *CryptographyEngine) decryptSymmetric(ciphertext string, key *QuantumK
 
 // signMessage signs a message
 func (qce *CryptographyEngine) signMessage(message string, key *QuantumKey, alg *QuantumAlgorithm) (string, error) {
-	// Simulate digital signature
-	// In a real implementation, this would use the actual signature algorithm
+	if err := qce.ensureSimulationAllowed("digital signature"); err != nil {
+		return "", err
+	}
 	hash := sha512.Sum512([]byte(message + key.PrivateKey))
 	return hex.EncodeToString(hash[:]), nil
 }
 
 // verifySignature verifies a signature
 func (qce *CryptographyEngine) verifySignature(message, signature, publicKey string, alg *QuantumAlgorithm) (bool, error) {
-	// Simulate signature verification
-	// In a real implementation, this would use the actual verification algorithm
+	if err := qce.ensureSimulationAllowed("signature verification"); err != nil {
+		return false, err
+	}
 	hash := sha512.Sum512([]byte(message + publicKey))
 	expectedSignature := hex.EncodeToString(hash[:])
 	return signature == expectedSignature, nil
@@ -691,4 +705,11 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (qce *CryptographyEngine) ensureSimulationAllowed(op string) error {
+	if qce.allowSimulation {
+		return nil
+	}
+	return fmt.Errorf("%s is disabled in production: set HADES_ALLOW_SIMULATED_CRYPTO=true only for non-production testing", op)
 }

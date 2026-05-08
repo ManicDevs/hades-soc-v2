@@ -72,14 +72,27 @@ func main() {
 
 // NewSentinel creates a new sentinel instance with all agentic components
 func NewSentinel(ctx context.Context) (*Sentinel, error) {
-	// Initialize database connection using SQLite for headless mode
-	db, err := sql.Open("sqlite3", "hades_sentinel.db")
+	// Initialize database connection using the main hades.db
+	db, err := sql.Open("sqlite3", "hades.db")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
+	// Initialize database manager
+	dbManager := database.GetManager()
+	if dbManager == nil {
+		// Create a new database manager if GetManager returns nil
+		dbConfig := &database.ManagerConfig{
+			DBType: database.SQLite,
+		}
+		dbManager = database.NewDatabaseManager(dbConfig)
+		if err := dbManager.Initialize(ctx); err != nil {
+			return nil, fmt.Errorf("failed to initialize database manager: %w", err)
+		}
+	}
+
 	// Initialize repository
-	repository := database.NewGlobalStateRepository(db, database.GetManager())
+	repository := database.NewGlobalStateRepository(db, dbManager)
 
 	// Initialize event bus - central nervous system
 	eventBus := bus.New()
@@ -101,7 +114,7 @@ func NewSentinel(ctx context.Context) (*Sentinel, error) {
 	}
 
 	// Initialize orchestrator - main agentic loop coordinator
-	orchestrator := agent.NewOrchestrator(eventBus, dispatcher, db)
+	orchestrator := agent.NewOrchestrator(eventBus, dispatcher, db, dbManager)
 
 	// Initialize metrics collector
 	metricsCollector := platform.GetGlobalMetrics()
@@ -149,17 +162,25 @@ func (s *Sentinel) Start() error {
 	// Event bus is auto-started via New()
 	log.Println("📡 Event bus initialized")
 
+	// Fail closed if safety governor is not wired correctly.
+	if s.orchestrator == nil || !s.orchestrator.HasSafetyGovernor() {
+		return fmt.Errorf("orchestrator safety governor unavailable; refusing to start sentinel")
+	}
+	log.Println("🛡️ Safety Governor verified")
+
 	// Start dispatcher workers
 	if err := s.dispatcher.Start(); err != nil {
 		return fmt.Errorf("failed to start dispatcher: %w", err)
 	}
 	log.Println("⚡ Dispatcher workers started (5/5 active)")
 
-	// Start orchestrator main loop
-	if err := s.orchestrator.Start(s.ctx); err != nil {
-		return fmt.Errorf("failed to start orchestrator: %w", err)
-	}
-	log.Println("🤖 Orchestrator main loop started")
+	// Start orchestrator with Safety Governor enforcement.
+	go func() {
+		if err := s.orchestrator.Start(s.ctx); err != nil {
+			log.Printf("❌ Failed to start orchestrator: %v", err)
+		}
+	}()
+	log.Println("🤖 Orchestrator started with Safety Governor")
 
 	// Deploy honey files and start deception system
 	if err := s.honeyManager.DeployHoneyFiles(); err != nil {

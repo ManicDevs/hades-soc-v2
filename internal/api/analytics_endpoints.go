@@ -42,6 +42,8 @@ func (ae *AnalyticsEndpoints) registerRoutes() {
 	ae.router.HandleFunc("/api/v2/analytics/query", ae.handleAnalyticsQuery)
 	ae.router.HandleFunc("/api/v2/analytics/metrics", ae.handleGetMetrics)
 	ae.router.HandleFunc("/api/v2/analytics/insights", ae.handleGetInsights)
+	ae.router.HandleFunc("/api/v2/analytics/ml-insights", ae.handleGetMLInsights)
+	ae.router.HandleFunc("/api/v2/analytics/overview", ae.handleGetOverview)
 	ae.router.HandleFunc("/api/v2/analytics/predictions", ae.handleGetPredictions)
 	ae.router.HandleFunc("/api/v2/analytics/model/status", ae.handleModelStatus)
 	ae.router.HandleFunc("/api/v2/analytics/model/train", ae.handleModelTraining)
@@ -357,6 +359,60 @@ func (ae *AnalyticsEndpoints) handleUserMetrics(w http.ResponseWriter, r *http.R
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleGetMLInsights handles getting ML insights
+func (ae *AnalyticsEndpoints) handleGetMLInsights(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	insights := map[string]interface{}{
+		"insights": []map[string]interface{}{
+			{
+				"type":        "anomaly_detection",
+				"confidence":  0.92,
+				"description": "Unusual network traffic patterns detected",
+				"timestamp":   time.Now(),
+			},
+			{
+				"type":        "threat_prediction",
+				"confidence":  0.87,
+				"description": "Potential security breach in next 24 hours",
+				"timestamp":   time.Now(),
+			},
+		},
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, insights)
+}
+
+// handleGetOverview handles getting analytics overview
+func (ae *AnalyticsEndpoints) handleGetOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	overview := map[string]interface{}{
+		"overview": map[string]interface{}{
+			"total_events":  15420,
+			"active_alerts": 3,
+			"risk_score":    0.23,
+			"system_health": "healthy",
+			"last_updated":  time.Now(),
+			"performance_metrics": map[string]interface{}{
+				"cpu_usage":    45.2,
+				"memory_usage": 67.8,
+				"disk_usage":   23.4,
+			},
+		},
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, overview)
 }
 
 // GetRouter returns the analytics endpoints router

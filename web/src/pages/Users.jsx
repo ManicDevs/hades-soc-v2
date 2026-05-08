@@ -168,7 +168,7 @@ function Users({ user }) {
             </thead>
             <tbody>
               {filteredUsers.map((user) => (
-                <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-700/30">
+                <tr key={`${user.id}-${user.username}`} className="border-b border-gray-800 hover:bg-gray-700/30">
                   <td className="py-3 px-4">
                     <div>
                       <p className="text-white font-medium">{user.username}</p>

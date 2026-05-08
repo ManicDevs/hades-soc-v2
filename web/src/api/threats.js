@@ -5,12 +5,16 @@ export const threatsAPI = {
   // Get all threats
   getThreats: async (filters = {}) => {
     const params = new URLSearchParams(filters)
-    return await API_CONFIG.request(`/threats?${params}`)
+    return await API_CONFIG.request(`/threats?${params}`, {
+      method: 'GET'
+    })
   },
 
   // Get threat by ID
   getThreat: async (id) => {
-    return await API_CONFIG.request(`/threats/${id}`)
+    return await API_CONFIG.request(`/threats/${id}`, {
+      method: 'GET'
+    })
   },
 
   // Update threat status
@@ -23,7 +27,9 @@ export const threatsAPI = {
 
   // Get threat statistics
   getThreatStats: async () => {
-    return await API_CONFIG.request('/threats/stats')
+    return await API_CONFIG.request('/threats/stats', {
+      method: 'GET'
+    })
   },
 
   // Block threat

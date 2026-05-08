@@ -61,9 +61,9 @@ var (
 	defaultOrchestrator *Orchestrator
 )
 
-func NewOrchestrator(eventBus *bus.EventBus, dispatcher *engine.Dispatcher, db *sql.DB) *Orchestrator {
-	// Create Safety Governor instance - pass nil for now, will be initialized later
-	safetyGov := engine.NewSafetyGovernor(nil)
+func NewOrchestrator(eventBus *bus.EventBus, dispatcher *engine.Dispatcher, db *sql.DB, dbManager *database.DatabaseManager) *Orchestrator {
+	// Create Safety Governor instance with proper database manager
+	safetyGov := engine.NewSafetyGovernor(dbManager)
 
 	return &Orchestrator{
 		eventBus:       eventBus,
@@ -127,6 +127,46 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	go o.dailyReportGenerator()
 
 	log.Printf("Orchestrator: Started with %d rules and V2.0 core subscriptions", len(o.rules))
+	return nil
+}
+
+// StartWithoutSafetyGovernor starts the orchestrator without the Safety Governor component
+func (o *Orchestrator) StartWithoutSafetyGovernor(ctx context.Context) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.running {
+		return fmt.Errorf("orchestrator is already running")
+	}
+
+	// Subscribe to V2.0 core events
+	o.eventBus.Subscribe(bus.EventTypeNewAsset, o.handleNewAssetEvent)
+	o.eventBus.Subscribe(bus.EventTypeThreat, o.handleThreatEvent)
+	o.eventBus.Subscribe(bus.EventTypeHoneyTokenTriggered, o.handleHoneyTokenEvent)
+	o.eventBus.Subscribe(bus.EventTypeHoneyFileAccessed, o.handleHoneyFileEvent)
+	o.eventBus.Subscribe(bus.EventTypeLateralMovement, o.handleLateralMovementEvent)
+
+	log.Printf("Orchestrator: V2.0 Sentient Architecture - Core event subscriptions registered")
+
+	o.registerDefaultRules()
+
+	for _, rule := range o.rules {
+		if !rule.Enabled {
+			continue
+		}
+		o.eventBus.Subscribe(rule.EventType, o.createHandler(rule))
+		log.Printf("Orchestrator: Registered rule '%s' for event '%s'", rule.Name, rule.EventType)
+	}
+
+	o.running = true
+	close(o.stopChan)
+	o.stopChan = make(chan struct{})
+
+	// Start daily report generation goroutine
+	o.wg.Add(1)
+	go o.dailyReportGenerator()
+
+	log.Printf("Orchestrator: Started without Safety Governor - %d rules active", len(o.rules))
 	return nil
 }
 
@@ -652,6 +692,14 @@ func (o *Orchestrator) registerDefaultRules() {
 
 				log.Printf("🍯 HONEY TOKEN TRAP TRIGGERED: Bait user '%s' accessed from %s", username, sourceIP)
 
+				// Safety Governor check before automated isolation.
+				isolationAction := fmt.Sprintf("isolate_%s", sourceIP)
+				approved, reason := o.checkSafetyGovernor(isolationAction, sourceIP)
+				if !approved {
+					log.Printf("🛡️ SAFETY GOVERNOR BLOCKED: Honey-token isolation for %s - %s", sourceIP, reason)
+					return fmt.Sprintf("Honey token triggered but isolation blocked by Safety Governor: %s", reason), nil
+				}
+
 				// Step 1: Immediate network isolation of source IP
 				if o.zeroTrustEngine != nil {
 					err := o.zeroTrustEngine.IsolateNode(sourceIP, quarantineVLAN)
@@ -711,6 +759,14 @@ func (o *Orchestrator) registerDefaultRules() {
 				quarantineVLAN := "quarantine"
 
 				log.Printf("Orchestrator: Lateral movement detected on %s. Initiating VLAN isolation.", sourceNode)
+
+				// Safety Governor check before automated isolation.
+				isolationAction := fmt.Sprintf("isolate_%s", sourceNode)
+				approved, reason := o.checkSafetyGovernor(isolationAction, sourceNode)
+				if !approved {
+					log.Printf("🛡️ SAFETY GOVERNOR BLOCKED: Lateral movement isolation for %s - %s", sourceNode, reason)
+					return fmt.Sprintf("Lateral movement detected but isolation blocked by Safety Governor: %s", reason), nil
+				}
 
 				// Step 1: Isolate source node to quarantine VLAN
 				if o.zeroTrustEngine != nil {
@@ -1131,6 +1187,13 @@ func (o *Orchestrator) IsRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.running
+}
+
+// HasSafetyGovernor reports whether the governor is available.
+func (o *Orchestrator) HasSafetyGovernor() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.safetyGovernor != nil
 }
 
 // isInSafeList checks if an IP is in the safe list

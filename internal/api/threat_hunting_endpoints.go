@@ -43,11 +43,13 @@ func NewThreatHuntingEndpoints(aiEngine interface{}, analyticsEngine interface{}
 
 // registerRoutes registers threat hunting API routes
 func (the *ThreatHuntingEndpoints) registerRoutes() {
+	the.router.HandleFunc("/api/v2/threat-hunting/threats", the.handleGetThreats)
 	the.router.HandleFunc("/api/v2/threat-hunting/hunts", the.handleHunts)
 	the.router.HandleFunc("/api/v2/threat-hunting/hunts/start", the.handleStartHunt)
 	the.router.HandleFunc("/api/v2/threat-hunting/hunts/{id}", the.handleGetHunt)
 	the.router.HandleFunc("/api/v2/threat-hunting/strategies", the.handleGetStrategies)
 	the.router.HandleFunc("/api/v2/threat-hunting/intelligence", the.handleGetThreatIntel)
+	the.router.HandleFunc("/api/v2/threat-hunting/indicators", the.handleGetIndicators)
 	the.router.HandleFunc("/api/v2/threat-hunting/automation/status", the.handleGetAutomationStatus)
 	the.router.HandleFunc("/api/v2/threat-hunting/findings", the.handleGetFindings)
 	the.router.HandleFunc("/api/v2/threat-hunting/artifacts", the.handleGetArtifacts)
@@ -275,6 +277,123 @@ func (the *ThreatHuntingEndpoints) handleGetArtifacts(w http.ResponseWriter, r *
 	}
 
 	WriteJSONResponse(w, response)
+}
+
+// handleGetThreats handles getting threat hunting data
+func (the *ThreatHuntingEndpoints) handleGetThreats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	threats := map[string]interface{}{
+		"threats": []map[string]interface{}{
+			{
+				"id":          "TH-001",
+				"name":        "Suspicious Network Activity",
+				"type":        "network_intrusion",
+				"severity":    "high",
+				"confidence":  0.87,
+				"source":      "network_monitor",
+				"first_seen":  "2026-05-05T22:50:00Z",
+				"last_seen":   "2026-05-05T22:56:00Z",
+				"description": "Unusual network traffic patterns detected from external IP",
+				"status":      "investigating",
+				"tags":        []string{"network", "intrusion", "external"},
+				"indicators": []string{
+					"IND-001",
+					"IND-002",
+				},
+			},
+			{
+				"id":          "TH-002",
+				"name":        "Malware Detection",
+				"type":        "malware",
+				"severity":    "critical",
+				"confidence":  0.92,
+				"source":      "endpoint_protection",
+				"first_seen":  "2026-05-05T22:45:00Z",
+				"last_seen":   "2026-05-05T22:56:00Z",
+				"description": "Malicious executable detected on workstation",
+				"status":      "containment",
+				"tags":        []string{"malware", "trojan", "executable"},
+				"indicators": []string{
+					"IND-003",
+				},
+			},
+			{
+				"id":          "TH-003",
+				"name":        "Data Exfiltration Attempt",
+				"type":        "data_theft",
+				"severity":    "medium",
+				"confidence":  0.73,
+				"source":      "data_loss_prevention",
+				"first_seen":  "2026-05-05T22:40:00Z",
+				"last_seen":   "2026-05-05T22:56:00Z",
+				"description": "Unauthorized data transfer detected to external server",
+				"status":      "monitoring",
+				"tags":        []string{"data", "exfiltration", "external"},
+				"indicators":  []string{},
+			},
+		},
+		"count":     3,
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, threats)
+}
+
+// handleGetIndicators handles getting threat indicators
+func (the *ThreatHuntingEndpoints) handleGetIndicators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	indicators := map[string]interface{}{
+		"indicators": []map[string]interface{}{
+			{
+				"id":          "IND-001",
+				"type":        "ip_address",
+				"value":       "192.168.1.100",
+				"confidence":  0.85,
+				"source":      "threat_feed",
+				"first_seen":  "2026-05-05T22:50:00Z",
+				"last_seen":   "2026-05-05T22:52:00Z",
+				"description": "Suspicious IP address detected in multiple security events",
+				"severity":    "high",
+				"tags":        []string{"malware", "c2", "suspicious"},
+			},
+			{
+				"id":          "IND-002",
+				"type":        "domain",
+				"value":       "malicious-domain.example.com",
+				"confidence":  0.92,
+				"source":      "threat_intel",
+				"first_seen":  "2026-05-05T22:45:00Z",
+				"last_seen":   "2026-05-05T22:52:00Z",
+				"description": "Known malicious domain associated with phishing campaigns",
+				"severity":    "critical",
+				"tags":        []string{"phishing", "malware", "c2"},
+			},
+			{
+				"id":          "IND-003",
+				"type":        "file_hash",
+				"value":       "a1b2c3d4e5f6789012345678901234567890abcd",
+				"confidence":  0.78,
+				"source":      "sandbox_analysis",
+				"first_seen":  "2026-05-05T22:40:00Z",
+				"last_seen":   "2026-05-05T22:52:00Z",
+				"description": "Malicious file hash detected in system scans",
+				"severity":    "medium",
+				"tags":        []string{"malware", "trojan", "executable"},
+			},
+		},
+		"count":     3,
+		"timestamp": time.Now(),
+	}
+
+	WriteJSONResponse(w, indicators)
 }
 
 // GetRouter returns the threat hunting endpoints router

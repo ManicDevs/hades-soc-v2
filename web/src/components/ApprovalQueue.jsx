@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { API_CONFIG } from '../api/config'
 
 const ApprovalQueue = () => {
   const [pendingActions, setPendingActions] = useState([])
@@ -49,12 +50,8 @@ const ApprovalQueue = () => {
 
   const fetchPendingActions = async () => {
     try {
-      const response = await fetch('/api/v2/governor/pending')
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const data = await response.json()
-      setPendingActions(data)
+      const data = await API_CONFIG.request('/governor/pending')
+      setPendingActions(data || [])
       setError(null)
     } catch (err) {
       console.error('Failed to fetch pending actions:', err)
@@ -70,7 +67,7 @@ const ApprovalQueue = () => {
     setProcessing(prev => new Set(prev).add(actionId))
     
     try {
-      const response = await fetch(`/api/v2/governor/approve/${actionId}`, {
+      const response = await API_CONFIG.request(`/governor/approve/${actionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -81,10 +78,6 @@ const ApprovalQueue = () => {
           reason: 'Approved by security analyst'
         })
       })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
 
       // Remove from pending list immediately (WebSocket will also update)
       setPendingActions(prev => prev.filter(action => action.action_id !== actionId))
@@ -107,7 +100,7 @@ const ApprovalQueue = () => {
     setProcessing(prev => new Set(prev).add(actionId))
     
     try {
-      const response = await fetch(`/api/v2/governor/approve/${actionId}`, {
+      const response = await API_CONFIG.request(`/governor/approve/${actionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,10 +111,6 @@ const ApprovalQueue = () => {
           reason: 'Denied by security analyst - potential risk too high'
         })
       })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
 
       // Remove from pending list immediately (WebSocket will also update)
       setPendingActions(prev => prev.filter(action => action.action_id !== actionId))

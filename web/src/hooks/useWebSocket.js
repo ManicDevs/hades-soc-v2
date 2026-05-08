@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { getAuthToken } from '../lib/authToken'
 
 export const useWebSocket = () => {
   const [lastMessage, setLastMessage] = useState(null)
@@ -10,9 +11,9 @@ export const useWebSocket = () => {
 
   const connect = () => {
     try {
-      // Determine WebSocket protocol based on current page protocol
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.host}/ws`
+      const wsBase = import.meta.env.VITE_WS_BASE_URL || `${protocol}//${window.location.host}`
+      const wsUrl = `${wsBase}/ws`
       
       ws.current = new WebSocket(wsUrl)
       
@@ -23,10 +24,12 @@ export const useWebSocket = () => {
         
         // Subscribe to governor events
         if (ws.current.readyState === WebSocket.OPEN) {
+          const token = getAuthToken()
           ws.current.send(JSON.stringify({
             type: 'subscribe',
             data: {
-              entity: 'governor_actions'
+              entity: 'governor_actions',
+              token
             }
           }))
         }

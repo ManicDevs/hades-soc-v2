@@ -1,3 +1,5 @@
+import { getAuthToken } from '../lib/authToken'
+
 // Centralized API Configuration with Distributed Support
 export const API_CONFIG = {
   // Environment detection
@@ -10,10 +12,6 @@ export const API_CONFIG = {
       return 'development'
     } else if (hostname.includes('test')) {
       return 'testing'
-    } else if (hostname.includes('qa')) {
-      return 'qa'
-    } else if (hostname.includes('staging')) {
-      return 'staging'
     }
     return 'production'
   },
@@ -21,24 +19,17 @@ export const API_CONFIG = {
   // Distributed API endpoints with failover
   getAPIEndpoints: () => {
     const env = API_CONFIG.getEnvironment()
+    const apiBase = import.meta.env.VITE_API_BASE_URL
     
     const endpoints = {
       development: [
-        'http://localhost:8080/api/v2'
+        apiBase || 'http://localhost:8080/api/v2'
       ],
       testing: [
-        'http://localhost:8080/api/v2'
-      ],
-      qa: [
-        'http://localhost:8080/api/v2'
-      ],
-      staging: [
-        'http://localhost:8080/api/v2'
+        apiBase || 'http://localhost:8080/api/v2'
       ],
       production: [
-        'https://api.hades-toolkit.com/api/v2',
-        'https://api-backup.hades-toolkit.com/api/v2',
-        'https://api-dr.hades-toolkit.com/api/v2'
+        apiBase || `${window.location.protocol}//${window.location.host}/api/v2`,
       ]
     }
     
@@ -70,7 +61,7 @@ export const API_CONFIG = {
   }),
 
   getAuthHeaders: () => {
-    const token = localStorage.getItem('hades-token')
+    const token = getAuthToken()
     return token ? { 'Authorization': `Bearer ${token}` } : {}
   },
 
@@ -87,16 +78,7 @@ export const API_CONFIG = {
 
   // Request wrapper with distributed failover
   request: async (endpoint, options = {}) => {
-    // For development environment, immediately check for fallback data first
     const currentEnv = API_CONFIG.getEnvironment()
-    if (currentEnv === 'development') {
-      const fallbackData = API_CONFIG.getFallbackData(endpoint)
-      if (fallbackData) {
-        console.log(`Using immediate fallback data for ${endpoint}`)
-        return fallbackData
-      }
-    }
-
     console.log(`API REQUEST START - Endpoint: ${endpoint}`)
     const endpoints = API_CONFIG.getAPIEndpoints()
     console.log(`Available endpoints:`, endpoints)
@@ -109,14 +91,20 @@ export const API_CONFIG = {
       
       console.log(`Attempting API request to: ${url}`)
       
+      const authHeaders = API_CONFIG.getAuthHeaders()
       const config = {
+        ...options,
         headers: {
           ...API_CONFIG.getDefaultHeaders(),
-          ...API_CONFIG.getAuthHeaders(),
+          ...authHeaders,
           ...options.headers
-        },
-        ...options
+        }
       }
+
+      // Debug: Show exactly what headers are being sent
+      console.log('🔍 Request headers being sent:', config.headers)
+      console.log('🔍 Request method:', options.method || 'GET')
+      console.log('🔍 Request body:', options.body || 'No body')
 
       try {
         const response = await fetch(url, config)

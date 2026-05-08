@@ -16,7 +16,7 @@ func main() {
 	ctx := context.Background()
 	eventBus := bus.Default()
 	dispatcher := engine.NewDispatcher(nil)
-	orch := agent.NewOrchestrator(eventBus, dispatcher, nil)
+	orch := agent.NewOrchestrator(eventBus, dispatcher, nil, nil)
 	if err := orch.Start(ctx); err != nil {
 		log.Printf("Failed to start orchestrator: %v", err)
 	}

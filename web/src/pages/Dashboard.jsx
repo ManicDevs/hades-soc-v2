@@ -35,7 +35,7 @@ function Dashboard({ user }) {
   const metricCards = [
     {
       title: 'Security Score',
-      value: metrics?.securityScore + '%' || '98%',
+      value: metrics?.security_score?.overall + '%' || '98%',
       icon: Shield,
       color: 'text-green-400',
       bgColor: 'bg-green-900/20',
@@ -43,7 +43,7 @@ function Dashboard({ user }) {
     },
     {
       title: 'Active Threats',
-      value: metrics?.activeThreats || 3,
+      value: metrics?.active_threats || 3,
       icon: AlertTriangle,
       color: 'text-red-400',
       bgColor: 'bg-red-900/20',
@@ -51,7 +51,7 @@ function Dashboard({ user }) {
     },
     {
       title: 'Blocked Attacks',
-      value: (metrics?.blockedAttacks || 1247).toLocaleString(),
+      value: (metrics?.blocked_attacks || 1247).toLocaleString(),
       icon: Lock,
       color: 'text-blue-400',
       bgColor: 'bg-blue-900/20',
@@ -59,7 +59,7 @@ function Dashboard({ user }) {
     },
     {
       title: 'System Health',
-      value: metrics?.systemHealth + '%' || '99%',
+      value: metrics?.system_health?.status === 'healthy' ? 'Healthy' : 'Unhealthy',
       icon: Activity,
       color: 'text-green-400',
       bgColor: 'bg-green-900/20',

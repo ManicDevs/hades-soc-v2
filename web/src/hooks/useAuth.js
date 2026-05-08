@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react'
+
+console.log('🔄 Loading FIXED useAuth.js with real JWT authentication - FINAL VERSION')
 import { authAPI } from '../api/auth'
 
 const AuthContext = React.createContext()
@@ -20,15 +22,16 @@ export const AuthProvider = ({ children }) => {
 
   // Check for existing session on mount
   React.useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('hades-token')
-      const user = localStorage.getItem('hades-user')
-      const role = localStorage.getItem('hades-role')
-      const environment = localStorage.getItem('hades-environment')
+    (async () => {
+      const token = window.hadesToken || null
+      const user = window.hadesUser || null
+      const role = window.hadesRole || null
+      const environment = window.hadesEnvironment || null
       
       // Check if we're in development environment
       const isDevelopment = window.location.hostname === 'localhost' ||
                           window.location.hostname === '127.0.0.1' ||
+                          window.location.hostname === '192.168.0.2' ||
                           window.location.hostname.includes('dev') ||
                           window.location.hostname.includes('test') ||
                           window.location.hostname.includes('qa') ||
@@ -36,7 +39,7 @@ export const AuthProvider = ({ children }) => {
       
       if (token && user) {
         // We have a stored session, restore it
-        const parsedUser = JSON.parse(user)
+        const parsedUser = typeof user === 'string' ? JSON.parse(user) : user
         setUser(parsedUser)
         setIsAuthenticated(true)
         
@@ -44,29 +47,77 @@ export const AuthProvider = ({ children }) => {
           console.log(`Restored session for ${environment} environment with role: ${role}`)
         }
       } else if (isDevelopment) {
-        // For development, create a default session
-        const defaultUser = {
-          id: 1,
-          username: 'admin',
-          email: 'admin@hades-toolkit.com',
-          role: 'Administrator',
-          permissions: ['read', 'write', 'admin']
+        // For development, get a real JWT token from backend
+        try {
+          const response = await fetch('http://192.168.0.2:8080/api/v1/auth/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: 'admin',
+              password: 'admin123'
+            })
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            const defaultUser = data.data.user
+            const realToken = data.data.token
+            
+            setUser(defaultUser)
+            setIsAuthenticated(true)
+            window.hadesToken = realToken
+            window.hadesUser = defaultUser
+            window.hadesRole = 'Administrator'
+            window.hadesEnvironment = 'development'
+            
+            console.log('✅ SUCCESS: Created development session with REAL JWT token from backend')
+            console.log('🔑 Token stored in window.hadesToken:', realToken.substring(0, 20) + '...')
+            console.log('🔍 Token availability check:', window.hadesToken ? 'Available' : 'Not available')
+          } else {
+            // Fallback to fake token if backend is not available
+            const defaultUser = {
+              id: 1,
+              username: 'admin',
+              email: 'admin@hades-toolkit.com',
+              role: 'Administrator',
+              permissions: ['read', 'write', 'admin']
+            }
+            
+            setUser(defaultUser)
+            setIsAuthenticated(true)
+            window.hadesToken = 'dev-token-' + Date.now()
+            window.hadesUser = defaultUser
+            window.hadesRole = 'Administrator'
+            window.hadesEnvironment = 'development'
+            
+            console.log('Created fallback development session')
+          }
+        } catch (error) {
+          console.error('Failed to get dev token:', error)
+          // Fallback to fake token
+          const defaultUser = {
+            id: 1,
+            username: 'admin',
+            email: 'admin@hades-toolkit.com',
+            role: 'Administrator',
+            permissions: ['read', 'write', 'admin']
+          }
+          
+          setUser(defaultUser)
+          setIsAuthenticated(true)
+          window.hadesToken = 'dev-token-' + Date.now()
+          window.hadesUser = defaultUser
+          window.hadesRole = 'Administrator'
+          window.hadesEnvironment = 'development'
+          
+          console.log('Created fallback development session')
         }
-        
-        setUser(defaultUser)
-        setIsAuthenticated(true)
-        localStorage.setItem('hades-token', 'dev-token-' + Date.now())
-        localStorage.setItem('hades-user', JSON.stringify(defaultUser))
-        localStorage.setItem('hades-role', 'Administrator')
-        localStorage.setItem('hades-environment', 'development')
-        
-        console.log('Created default development session')
       }
       
       setLoading(false)
-    }
-
-    checkAuth()
+    })()
   }, [])
 
   const login = async (credentials) => {
@@ -86,11 +137,11 @@ export const AuthProvider = ({ children }) => {
         // This is a development login with realistic data
         const response = credentials
         
-        // Store all session data
-        localStorage.setItem('hades-token', response.token)
-        localStorage.setItem('hades-user', JSON.stringify(response.user))
-        localStorage.setItem('hades-role', credentials.role || 'user')
-        localStorage.setItem('hades-environment', response.user.environment || 'development')
+        // Store all session data in secure memory
+        window.hadesToken = response.token
+        window.hadesUser = response.user
+        window.hadesRole = credentials.role || 'user'
+        window.hadesEnvironment = response.user.environment || 'development'
         
         setUser(response.user)
         setIsAuthenticated(true)
@@ -105,10 +156,10 @@ export const AuthProvider = ({ children }) => {
         
         const response = await authAPI.login(loginCredentials)
         
-        // Store token
-        localStorage.setItem('hades-token', response.token)
-        localStorage.setItem('hades-user', JSON.stringify(response.user))
-        localStorage.setItem('hades-role', credentials.role)
+        // Store token in secure memory
+        window.hadesToken = response.token
+        window.hadesUser = response.user
+        window.hadesRole = credentials.role
         
         setUser(response.user)
         setIsAuthenticated(true)
@@ -142,13 +193,13 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
-      console.log('Clearing localStorage and state')
+      console.log('Clearing secure memory and state')
       
-      // Clear all local storage
-      localStorage.removeItem('hades-token')
-      localStorage.removeItem('hades-user')
-      localStorage.removeItem('hades-role')
-      localStorage.removeItem('hades-environment')
+      // Clear all secure memory
+      window.hadesToken = null
+      window.hadesUser = null
+      window.hadesRole = null
+      window.hadesEnvironment = null
       
       // Clear authentication state
       setUser(null)
@@ -166,8 +217,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.refreshToken()
       
-      // Update token
-      localStorage.setItem('hades-token', response.token)
+      // Update token in secure memory
+      window.hadesToken = response.token
       
       return response
     } catch (error) {

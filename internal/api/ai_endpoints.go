@@ -346,6 +346,7 @@ func (ae *AIEndpoints) handleModelTraining(w http.ResponseWriter, r *http.Reques
 
 // handleThreats handles getting AI detected threats
 func (ae *AIEndpoints) handleThreats(w http.ResponseWriter, r *http.Request) {
+	log.Printf("🔍 AI threats endpoint called: %s %s", r.Method, r.URL.Path)
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

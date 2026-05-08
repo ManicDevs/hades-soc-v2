@@ -99,10 +99,14 @@ type Activity struct {
 }
 
 func NewServer(port int) *Server {
+	log.Printf("🚀 Starting HADES server on port %d", port)
+	if err := initAuthConfig(); err != nil {
+		log.Fatalf("Failed to initialize auth config: %v", err)
+	}
 	// Create database connection (default to SQLite for development)
 	dbConfig := database.DatabaseConfig{
 		Type:     database.SQLite,
-		Database: "./hades_toolkit.db",
+		Database: "./hades.db",
 	}
 
 	db := database.NewDatabase(database.SQLite)
@@ -149,6 +153,8 @@ func NewServer(port int) *Server {
 	blockchainEndpoints, err := NewBlockchainEndpoints(db)
 	if err != nil {
 		log.Printf("Warning: Failed to create blockchain endpoints: %v", err)
+	} else {
+		log.Printf("✅ Blockchain endpoints created successfully")
 	}
 
 	// Create zero-trust endpoints
@@ -161,12 +167,16 @@ func NewServer(port int) *Server {
 	quantumEndpoints, err := NewQuantumEndpoints(db)
 	if err != nil {
 		log.Printf("Warning: Failed to create quantum endpoints: %v", err)
+	} else {
+		log.Printf("✅ Quantum endpoints created successfully")
 	}
 
 	// Create SIEM endpoints
 	siemEndpoints, err := NewSIEMEndpoints(db)
 	if err != nil {
 		log.Printf("Warning: Failed to create SIEM endpoints: %v", err)
+	} else {
+		log.Printf("✅ SIEM endpoints created successfully")
 	}
 
 	// Create incident response endpoints
@@ -192,9 +202,27 @@ func NewServer(port int) *Server {
 
 	// Create governor endpoints
 	dbManager := database.GetManager()
+	// Configure database manager for SQLite with the correct database file
+	dbManagerConfig := &database.ManagerConfig{
+		UseSQLite:    true,
+		SQLitePath:   "./hades.db",
+		DBType:       database.SQLite,
+		Database:     "hades",
+		PrimaryDSN:   "./hades.db",
+		MaxOpenConns: 10,
+		MaxIdleConns: 5,
+		ConnLifetime: time.Hour * 1,
+	}
+	dbManager.SetConfig(dbManagerConfig)
 	// Initialize the database manager
 	if err := dbManager.Initialize(context.Background()); err != nil {
 		log.Printf("Warning: Failed to initialize database manager: %v", err)
+	} else {
+		log.Printf("DatabaseManager initialized successfully")
+		// Create governor_actions table if it doesn't exist
+		if err := dbManager.CreateGovernorActionTable(context.Background()); err != nil {
+			log.Printf("Warning: Failed to create governor_actions table: %v", err)
+		}
 	}
 
 	governorEndpoints, err := NewGovernorEndpoints(dbManager, wsManager)
@@ -261,7 +289,20 @@ func (s *Server) setupRoutes() {
 	// AI-powered endpoints
 	if s.aiEndpoints != nil {
 		// Mount AI endpoints router
-		s.router.PathPrefix("/api/v2/ai").Handler(s.aiEndpoints.GetRouter())
+		log.Printf("✅ Registering AI endpoints at /api/v2/ai")
+		s.router.HandleFunc("/api/v2/ai/threats", s.aiEndpoints.handleThreats)
+		s.router.HandleFunc("/api/v2/ai/anomalies", s.aiEndpoints.handleAnomalies)
+		s.router.HandleFunc("/api/v2/ai/predictions", s.aiEndpoints.handlePredictions)
+		s.router.HandleFunc("/api/v2/ai/overview", s.aiEndpoints.handleOverview)
+		s.router.HandleFunc("/api/v2/ai/analyze", s.aiEndpoints.handleAnalyzeEvent)
+		s.router.HandleFunc("/api/v2/ai/batch-analyze", s.aiEndpoints.handleBatchAnalyze)
+		s.router.HandleFunc("/api/v2/ai/threat-score", s.aiEndpoints.handleThreatScore)
+		s.router.HandleFunc("/api/v2/ai/patterns", s.aiEndpoints.handlePatternMatching)
+		s.router.HandleFunc("/api/v2/ai/baseline", s.aiEndpoints.handleBaselineManagement)
+		s.router.HandleFunc("/api/v2/ai/model/status", s.aiEndpoints.handleModelStatus)
+		s.router.HandleFunc("/api/v2/ai/model/train", s.aiEndpoints.handleModelTraining)
+	} else {
+		log.Printf("❌ AI endpoints are nil - not registering")
 	}
 
 	// Advanced analytics endpoints
@@ -273,37 +314,104 @@ func (s *Server) setupRoutes() {
 	// Threat hunting endpoints
 	if s.threatHuntingEndpoints != nil {
 		// Mount threat hunting endpoints router
-		s.router.PathPrefix("/api/v2/threat-hunting").Handler(s.threatHuntingEndpoints.GetRouter())
+		log.Printf("✅ Registering threat-hunting endpoints at /api/v2/threat-hunting")
+		threatHuntingRouter := s.threatHuntingEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/threat-hunting/threats", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/hunts", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/hunts/start", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/hunts/{id}", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/strategies", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/intelligence", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/indicators", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/automation/status", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/findings", threatHuntingRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/threat-hunting/artifacts", threatHuntingRouter.ServeHTTP)
 	}
 
 	// Blockchain audit endpoints
 	if s.blockchainEndpoints != nil {
 		// Mount blockchain endpoints router
-		s.router.PathPrefix("/api/v2/blockchain").Handler(s.blockchainEndpoints.GetRouter())
+		log.Printf("✅ Registering blockchain endpoints at /api/v2/blockchain")
+		blockchainRouter := s.blockchainEndpoints.GetRouter()
+		if blockchainRouter != nil {
+			s.router.HandleFunc("/api/v2/blockchain/audit/log", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/audit-logs", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/query", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/verify", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/integrity", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/status", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/entries", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/audit/proof", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/blocks", blockchainRouter.ServeHTTP)
+			s.router.HandleFunc("/api/v2/blockchain/transactions", blockchainRouter.ServeHTTP)
+		} else {
+			log.Printf("❌ Blockchain router is nil")
+		}
+	} else {
+		log.Printf("❌ Blockchain endpoints are nil")
 	}
 
 	// Zero-trust network endpoints
 	if s.zeroTrustEndpoints != nil {
 		// Mount zero-trust endpoints router
-		s.router.PathPrefix("/api/v2/zerotrust").Handler(s.zeroTrustEndpoints.GetRouter())
+		log.Printf("✅ Registering zero-trust endpoints at /api/v2/zerotrust")
+		zeroTrustRouter := s.zeroTrustEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/zerotrust/access/evaluate", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/access-requests", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/devices/register", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/sessions/create", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/sessions/validate", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/segments", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/network-segments", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/devices", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/policies", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/trust-scores", zeroTrustRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/zerotrust/trust/status", zeroTrustRouter.ServeHTTP)
 	}
 
 	// Quantum cryptography endpoints
 	if s.quantumEndpoints != nil {
 		// Mount quantum endpoints router
-		s.router.PathPrefix("/api/v2/quantum").Handler(s.quantumEndpoints.GetRouter())
+		log.Printf("✅ Registering quantum endpoints at /api/v2/quantum")
+		quantumRouter := s.quantumEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/quantum/algorithms", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/keys/generate", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/keys", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/certificates", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/metrics", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/encrypt", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/decrypt", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/sign", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/verify", quantumRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/quantum/status", quantumRouter.ServeHTTP)
 	}
 
 	// SIEM integration endpoints
 	if s.siemEndpoints != nil {
 		// Mount SIEM endpoints router
-		s.router.PathPrefix("/api/v2/siem").Handler(s.siemEndpoints.GetRouter())
+		log.Printf("✅ Registering SIEM endpoints at /api/v2/siem")
+		siemRouter := s.siemEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/siem/collectors", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/rules", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/threat-feeds", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/alerts", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/incidents", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/events", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/correlations", siemRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/siem/status", siemRouter.ServeHTTP)
 	}
 
 	// Incident response endpoints
 	if s.incidentEndpoints != nil {
 		// Mount incident endpoints router
-		s.router.PathPrefix("/api/v2/incident").Handler(s.incidentEndpoints.GetRouter())
+		log.Printf("✅ Registering incident endpoints at /api/v2/incident")
+		incidentRouter := s.incidentEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/incident/playbooks", incidentRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/incident/incidents", incidentRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/incident/actions", incidentRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/incident/response-actions", incidentRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/incident/active-responses", incidentRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/incident/status", incidentRouter.ServeHTTP)
 	}
 
 	// Threat modeling endpoints
@@ -315,15 +423,27 @@ func (s *Server) setupRoutes() {
 	// Kubernetes endpoints
 	if s.kubernetesEndpoints != nil {
 		// Mount Kubernetes endpoints router
-		s.router.PathPrefix("/api/v2/kubernetes").Handler(s.kubernetesEndpoints.GetRouter())
+		log.Printf("✅ Registering kubernetes endpoints at /api/v2/kubernetes")
+		kubernetesRouter := s.kubernetesEndpoints.GetRouter()
+		s.router.HandleFunc("/api/v2/kubernetes/clusters", kubernetesRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/kubernetes/deployments", kubernetesRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/kubernetes/scale", kubernetesRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/kubernetes/services", kubernetesRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/kubernetes/autoscalers", kubernetesRouter.ServeHTTP)
+		s.router.HandleFunc("/api/v2/kubernetes/status", kubernetesRouter.ServeHTTP)
 	}
 
 	// Safety Governor endpoints
 	if s.governorEndpoints != nil {
 		// Mount governor endpoints router with JWT protection
+		log.Printf("✅ Registering governor endpoints at /api/v2/governor")
 		governorRouter := s.governorEndpoints.GetRouter()
-		// Apply JWT middleware for admin access
-		s.router.PathPrefix("/api/v2/governor").Handler(s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		// Apply JWT middleware for admin access to each endpoint
+		s.router.Handle("/api/v2/governor/pending", s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		s.router.Handle("/api/v2/governor/approve/{actionId}", s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		s.router.Handle("/api/v2/governor/deny/{actionId}", s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		s.router.Handle("/api/v2/governor/history", s.JWTMiddleware(s.RequireAdmin(governorRouter)))
+		s.router.Handle("/api/v2/governor/status", s.JWTMiddleware(s.RequireAdmin(governorRouter)))
 		// Start the safety governor monitoring
 		s.governorEndpoints.Start()
 	}
@@ -451,9 +571,10 @@ func (s *Server) setupV2Routes() {
 func (s *Server) Start() error {
 	// Setup CORS
 	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"http://localhost:3000"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowedHeaders: []string{"*"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://192.168.0.2:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
 	})
 
 	handler := c.Handler(s.router)

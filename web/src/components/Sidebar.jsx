@@ -1,9 +1,11 @@
 import React from 'react'
+import { useLocation } from 'react-router-dom'
 import { Shield, Activity, AlertTriangle, Users, Settings, Home, Lock, Database, Globe, Code, Brain, BarChart3, Target, Hash, Atom, Server, FileText, ShieldCheck, CheckCircle } from 'lucide-react'
 
 function Sidebar({ isOpen, onToggle, user }) {
+  const location = useLocation()
   const menuItems = [
-    { icon: Home, label: 'Dashboard', path: '/dashboard', active: true },
+    { icon: Home, label: 'Dashboard', path: '/dashboard' },
     { icon: Shield, label: 'Security', path: '/security' },
     { icon: CheckCircle, label: 'Approval Queue', path: '/approval-queue' },
     { icon: Lock, label: 'Threats', path: '/threats' },
@@ -52,12 +54,13 @@ function Sidebar({ isOpen, onToggle, user }) {
         <ul className="space-y-2">
           {menuItems.map((item, index) => {
             const Icon = item.icon
+            const isActive = location.pathname === item.path
             return (
               <li key={index}>
                 <a
                   href={item.path}
                   className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
-                    item.active
+                    isActive
                       ? 'bg-hades-primary text-white'
                       : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                   }`}

@@ -15,7 +15,7 @@ sentinel-*
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Dependency directories (remove the comment below to include it)
+# Dependency directories
 vendor/
 
 # Go workspace file
@@ -40,10 +40,10 @@ Thumbs.db
 # Application specific
 data/
 logs/
-config/hades.yaml
+config/
 *.db
-*.sqlite
 *.sqlite3
+*.sqlite
 
 # Backup files
 backups/
@@ -66,6 +66,7 @@ coverage.html
 .env
 .env.*
 .env.*.local
+
 # Explicit exceptions for example files
 !.env.example
 !.env.*.example
@@ -92,7 +93,7 @@ docs/site/
 .local/
 dev/
 
-# Node modules (if any)
+# Node modules
 node_modules/
 
 # Logs
@@ -102,11 +103,6 @@ logs/
 # Database dumps
 *.sql
 *.dump
-
-# Configuration overrides
-config/local.yaml
-config/development.yaml
-config/production.yaml
 
 # Security files
 *.p12
@@ -126,54 +122,9 @@ prometheus_data/
 secrets/
 *.secret
 
-# Local scripts
-scripts/local/
-scripts/dev/
-
-# Test data
-test_data/
-testdata/
-
-# Performance reports
-perf_reports/
-benchmark_results/
-
-# CI/CD artifacts
-artifacts/
-.github/workflows/outputs/
-
-# Local cache
-.cache/
-.cache-go/
-
 # Editor backups
 *.bak
 *.backup
-
-# Local database files
-hades.db
-hades-*.db
-
-# Session files
-sessions/
-*.session
-
-# Temporary API tokens
-tokens.txt
-api_tokens.txt
-
-# Local SSL development certs
-dev_ssl/
-localhost.crt
-localhost.key
-
-# Local development configs
-dev-config.yaml
-local-config.yaml
-
-# Backup directories
-backup/
-backups/
 
 # Runtime files
 runtime/
@@ -188,16 +139,6 @@ local_monitoring/
 .tools/
 dev-tools/
 
-# Local environment overrides (covered by .env.* pattern above)
-
-# Local service discovery
-discovery/
-services.json
-
-# Local testing
-test-results/
-test-reports/
-
 # Local profiling
 profiles/
 cpu.prof
@@ -207,14 +148,6 @@ mem.prof
 logging.yaml
 log-config.yaml
 
-# Local database migrations
-local-migrations/
-dev-migrations/
-
-# Local API documentation
-api-docs-local/
-swagger-local.yaml
-
 # Honey-files (dynamically generated deception files)
 modules/auxiliary/credentials.txt
 internal/database/backup_config.json
@@ -223,7 +156,7 @@ web/src/assets/admin_portal_keys.pem
 **/kubernetes_admin.conf
 **/aws_vault_credentials.json
 
-# Generated reports (ignore generated reports, preserve template)
+# Generated reports (preserve template, ignore generated)
 reports/daily_report_*.md
 reports/simulation_report_*.json
 !reports/daily_report_template.md

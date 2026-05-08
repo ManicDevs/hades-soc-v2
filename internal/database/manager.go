@@ -166,8 +166,13 @@ func NewDatabaseManager(config *ManagerConfig) *DatabaseManager {
 	// Initialize encryption service
 	encryptionKey := os.Getenv("HADES_DB_ENCRYPTION_KEY")
 	if encryptionKey == "" {
-		log.Printf("WARNING: HADES_DB_ENCRYPTION_KEY not set, using default key for development")
-		encryptionKey = "hades-default-encryption-key-change-in-production"
+		if os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") == "true" {
+			log.Printf("WARNING: using insecure development database encryption key")
+			encryptionKey = "hades-insecure-dev-key"
+		} else {
+			log.Printf("CRITICAL: HADES_DB_ENCRYPTION_KEY not set")
+			return nil
+		}
 	}
 
 	encryption, err := NewDBEncryptionService(encryptionKey)
@@ -204,11 +209,13 @@ func (dm *DatabaseManager) Initialize(ctx context.Context) error {
 	default:
 		// Fallback to SQLite for unknown types
 		log.Printf("Warning: Unknown DB type %v, falling back to SQLite", dm.config.DBType)
+		dm.config.DBType = SQLite
 		db, err = dm.connectSQLite()
 	}
 
 	if err != nil {
 		log.Printf("Warning: Primary connection failed, falling back to SQLite: %v", err)
+		dm.config.DBType = SQLite
 		db, err = dm.connectSQLite()
 		if err != nil {
 			return fmt.Errorf("failed to initialize database: %w", err)

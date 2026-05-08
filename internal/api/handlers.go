@@ -60,19 +60,6 @@ type LoginResponse struct {
 	User  User   `json:"user"`
 }
 
-// JWT Secret Key
-var jwtSecret = []byte("hades-toolkit-secret-key")
-
-// Environment-based authentication
-var mockPasswords = map[string]string{
-	// Development environment credentials only
-	"dev":   "dev123",   // Dev access credentials for development
-	"admin": "admin123", // Admin access credentials for testing
-	// Production users - no default passwords
-	"jsmith":     "secureUserPass456!", // This should be a bcrypt hash in production
-	"mrodriguez": "secureUserPass789!", // This should be a bcrypt hash in production
-}
-
 // Authentication Handlers
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -124,11 +111,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
-	// Mock token refresh
+	claims, ok := getClaimsFromRequest(r)
+	if !ok {
+		s.writeError(w, http.StatusUnauthorized, "Valid authentication token required")
+		return
+	}
+
 	user := User{
-		ID:       1,
-		Username: "admin",
-		Role:     "Administrator",
+		ID:       claims.UserID,
+		Username: claims.Username,
+		Role:     claims.Role,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -148,14 +140,16 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	user := User{
-		ID:          1,
-		Username:    "admin",
-		Email:       "admin@hades-toolkit.com",
-		Role:        "Administrator",
-		Status:      "active",
-		LastLogin:   time.Now().Add(-2 * time.Hour),
-		Permissions: []string{"read", "write", "admin"},
+	claims, ok := getClaimsFromRequest(r)
+	if !ok {
+		s.writeError(w, http.StatusUnauthorized, "Valid authentication token required")
+		return
+	}
+
+	user, exists := s.getUserByUsername(claims.Username)
+	if !exists {
+		s.writeError(w, http.StatusUnauthorized, "User not found")
+		return
 	}
 	s.writeSuccess(w, user)
 }
@@ -870,13 +864,10 @@ func (s *Server) handleV2Webhooks(w http.ResponseWriter, r *http.Request) {
 
 // Helper methods for authentication
 func (s *Server) validateCredentials(username, password string) bool {
-	// Check if user exists and password matches
-	expectedPassword, exists := mockPasswords[username]
+	expectedPassword, exists := devPasswords[username]
 	if !exists {
 		return false
 	}
-
-	// In production, this would use bcrypt to compare hashed passwords
 	return password == expectedPassword
 }
 

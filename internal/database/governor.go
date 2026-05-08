@@ -22,7 +22,7 @@ const (
 func (dm *DatabaseManager) EnsureTableExists(ctx context.Context, tableName string) (bool, error) {
 	if dm.IsSQLite() {
 		var name string
-		query := fmt.Sprintf(`SELECT name FROM sqlite_master WHERE type='table' AND name=%s`, dm.GetPlaceholder())
+		query := `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
 		err := dm.primary.QueryRowContext(ctx, query, tableName).Scan(&name)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -288,6 +288,17 @@ func (dm *DatabaseManager) GetRecentActions(ctx context.Context, since time.Time
 	ORDER BY created_at DESC
 	LIMIT ?
 	`
+	if dm.IsSQLite() {
+		queryTemplate = `
+		SELECT id, action_id, action_name, target, reasoning, requester, status,
+			requires_approval, approved, requires_manual_ack, block_reason,
+			execution_time, metadata, created_at, updated_at
+		FROM governor_actions
+		WHERE datetime(created_at) >= datetime(?)
+		ORDER BY datetime(created_at) DESC
+		LIMIT ?
+		`
+	}
 
 	args := []interface{}{sinceUTC, limit}
 
@@ -570,6 +581,9 @@ func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAc
 // CleanupOldGovernorActions removes actions older than the specified duration
 func (dm *DatabaseManager) CleanupOldGovernorActions(ctx context.Context, olderThan time.Duration) error {
 	queryTemplate := `DELETE FROM governor_actions WHERE created_at < ?`
+	if dm.IsSQLite() {
+		queryTemplate = `DELETE FROM governor_actions WHERE datetime(created_at) < datetime(?)`
+	}
 
 	// Use Go-calculated timestamp with UTC to prevent timezone drift
 	cutoff := time.Now().UTC().Add(-olderThan)

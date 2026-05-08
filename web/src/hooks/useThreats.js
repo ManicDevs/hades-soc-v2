@@ -30,7 +30,8 @@ export const useThreats = () => {
     
     try {
       const threatsData = await threatsAPI.getThreats(filters)
-      setThreats(threatsData)
+      // Extract threats array from nested API response structure
+      setThreats(threatsData?.data?.data || [])
     } catch (error) {
       setError('Failed to fetch threats')
       console.error('Threats fetch error:', error)
@@ -41,8 +42,25 @@ export const useThreats = () => {
 
   const fetchThreatStats = async () => {
     try {
-      const statsData = await threatsAPI.getThreatStats()
-      setStats(statsData)
+      // Use the main threats endpoint which includes stats in metadata
+      const threatsData = await threatsAPI.getThreats(filters)
+      // Extract stats from the metadata
+      const stats = {
+        total_threats: threatsData?.data?.metadata?.total_threats || 0,
+        by_severity: threatsData?.data?.data?.reduce((acc, threat) => {
+          acc[threat.severity] = (acc[threat.severity] || 0) + 1
+          return acc
+        }, {}) || {},
+        by_status: threatsData?.data?.data?.reduce((acc, threat) => {
+          acc[threat.status] = (acc[threat.status] || 0) + 1
+          return acc
+        }, {}) || {},
+        by_type: threatsData?.data?.data?.reduce((acc, threat) => {
+          acc[threat.type] = (acc[threat.type] || 0) + 1
+          return acc
+        }, {}) || {}
+      }
+      setStats(stats)
     } catch (error) {
       console.error('Threat stats fetch error:', error)
     }
