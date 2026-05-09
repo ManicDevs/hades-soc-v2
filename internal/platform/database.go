@@ -58,6 +58,9 @@ func NewDatabase(config *DatabaseConfig) (*Database, error) {
 	}
 
 	mgr := database.GetManager()
+	if mgr == nil {
+		return nil, fmt.Errorf("hades.platform.database: database manager not initialized (set HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true)")
+	}
 
 	managerConfig := &database.ManagerConfig{
 		PrimaryDSN: fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",

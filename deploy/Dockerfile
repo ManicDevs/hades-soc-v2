@@ -2,6 +2,56 @@
 # Uses lightweight Alpine base to reduce attack surface
 # Security-hardened with non-root user and seccomp profile
 
+# Development build stage - Full development environment
+FROM golang:1.25-alpine AS development
+
+# Install development dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    gcc \
+    musl-dev \
+    sqlite-dev \
+    pkgconfig \
+    curl \
+    vim \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build hades binary for development
+ARG VERSION=dev
+ARG BUILD_TIME
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -X main.version=${VERSION} -X main.buildTime=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    -o hades \
+    ./cmd/hades
+
+# Install development tools
+RUN go install -a github.com/air-verse/air@latest && \
+    go install -a github.com/swaggo/swag/cmd/swag@latest
+
+# Set environment for development
+ENV GIN_MODE=debug
+ENV HADES_ENV=development
+
+# Expose ports
+EXPOSE 8080 8081
+
+# Development command
+CMD ["./hades", "api"]
+
 # Build stage - Go compiler with full toolchain
 FROM golang:1.25-alpine AS builder
 

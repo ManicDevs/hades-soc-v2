@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -15,15 +16,29 @@ import (
 func resetDatabaseManager(t *testing.T) {
 	t.Helper()
 	mgr := database.GetManager()
+	if mgr == nil {
+		return
+	}
 	if err := mgr.Close(); err != nil {
 		t.Logf("Warning: failed to close database manager: %v", err)
 	}
 }
 
+// skipIfNoDBManager skips the test if the database manager cannot be initialized
+func skipIfNoDBManager(t *testing.T) {
+	t.Helper()
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+}
+
 // Test database connection and basic operations
 func TestDatabaseConnection(t *testing.T) {
-	// Reset global DatabaseManager state
-	resetDatabaseManager(t)
+	// Check if database manager can be initialized
+	mgr := database.GetManager()
+	if mgr == nil {
+		t.Skip("Database manager requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
 
 	t.Run("ConnectToInMemorySQLite", func(t *testing.T) {
 		// Create config for in-memory SQLite
@@ -70,6 +85,7 @@ func TestDatabaseConnection(t *testing.T) {
 
 // Test CRUD operations
 func TestDatabaseCRUD(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
@@ -362,6 +378,7 @@ func TestDatabaseCRUD(t *testing.T) {
 
 // Test connection pooling behavior
 func TestDatabaseConnectionPooling(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
@@ -562,6 +579,7 @@ func TestDatabaseConnectionPooling(t *testing.T) {
 
 // Test graceful handling of closed connection
 func TestDatabaseClosedConnection(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
@@ -625,6 +643,7 @@ func TestDatabaseClosedConnection(t *testing.T) {
 
 // Test configuration and audit operations
 func TestDatabaseConfigurationAndAudit(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
@@ -825,6 +844,7 @@ func TestDatabaseConfigurationAndAudit(t *testing.T) {
 
 // Test scan results operations
 func TestDatabaseScanResults(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
@@ -997,6 +1017,7 @@ func TestDatabaseScanResults(t *testing.T) {
 
 // Test cleanup operations
 func TestDatabaseCleanup(t *testing.T) {
+	skipIfNoDBManager(t)
 	// Reset global DatabaseManager state
 	resetDatabaseManager(t)
 
