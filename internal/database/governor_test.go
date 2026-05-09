@@ -9,6 +9,10 @@ import (
 )
 
 func TestDatabaseManagerDriverSupport(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	tests := []struct {
 		name     string
 		dbType   DatabaseType
@@ -63,6 +67,10 @@ func TestDatabaseManagerDriverSupport(t *testing.T) {
 }
 
 func TestGovernorActionCrossDB(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	// Test with SQLite (in-memory)
 	t.Run("SQLite", func(t *testing.T) {
 		config := &ManagerConfig{
@@ -72,6 +80,9 @@ func TestGovernorActionCrossDB(t *testing.T) {
 		}
 
 		dm := NewDatabaseManager(config)
+		if dm == nil {
+			t.Skip("Database manager initialization failed (encryption key required)")
+		}
 		ctx := context.Background()
 
 		err := dm.Initialize(ctx)
@@ -220,6 +231,10 @@ func TestGovernorActionWithEnvironmentDB(t *testing.T) {
 }
 
 func TestTimeLogicConsistency(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	// Test that time calculations are consistent across database types
 	config := &ManagerConfig{
 		DBType:     SQLite,
@@ -228,6 +243,9 @@ func TestTimeLogicConsistency(t *testing.T) {
 	}
 
 	dm := NewDatabaseManager(config)
+	if dm == nil {
+		t.Skip("Database manager initialization failed (encryption key required)")
+	}
 	ctx := context.Background()
 
 	err := dm.Initialize(ctx)

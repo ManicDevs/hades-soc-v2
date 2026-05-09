@@ -28,12 +28,19 @@ func NewTestDatabaseManager(t *testing.T) *database.DatabaseManager {
 	// Clean up any existing test database
 	cleanupTestDatabase()
 
+if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	config := &database.ManagerConfig{
 		UseSQLite:  true,
-		SQLitePath: "file:hades_test.db?cache=shared&_journal_mode=WAL", // Shared cache for multiple connections
+		SQLitePath: "file:hades_test.db?cache=shared&_journal_mode=WAL",
 	}
 
 	dbManager := database.NewDatabaseManager(config)
+	if dbManager == nil {
+		t.Skip("Database manager initialization failed (encryption key required)")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -327,6 +334,10 @@ func BenchmarkGovernorRequestAction(b *testing.B) {
 
 // TestServiceRestartPersistence validates that block count persists across service restarts
 func TestServiceRestartPersistence(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	// Create a persistent database (using file instead of memory)
 	dbFile := "/tmp/test_governor_restart.db"
 

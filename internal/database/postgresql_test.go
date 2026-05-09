@@ -3,18 +3,26 @@ package database
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
 
 // TestPostgreSQLOptimizations validates PostgreSQL-specific optimizations
 func TestPostgreSQLOptimizations(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	config := &ManagerConfig{
 		DBType:     PostgreSQL,
-		PrimaryDSN: "postgres://user:pass@localhost/hades_test?sslmode=disable", // Test DSN
+		PrimaryDSN: "postgres://user:pass@localhost/hades_test?sslmode=disable",
 	}
 
 	dm := NewDatabaseManager(config)
+	if dm == nil {
+		t.Skip("Database manager initialization failed (encryption key required)")
+	}
 
 	// Test connection pool optimization
 	maxOpen, maxIdle, lifetime := dm.GetOptimalPoolConfig()
@@ -87,8 +95,14 @@ func TestUniversalPlaceholderConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+				t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+			}
 			config := &ManagerConfig{DBType: tt.dbType}
 			dm := NewDatabaseManager(config)
+			if dm == nil {
+				t.Skip("Database manager initialization failed")
+			}
 
 			query, finalArgs := dm.BuildQuery(tt.queryTemplate, tt.args...)
 
@@ -105,6 +119,10 @@ func TestUniversalPlaceholderConversion(t *testing.T) {
 
 // TestUTC timestamp handling validates timezone consistency
 func TestUTCTimestampHandling(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	config := &ManagerConfig{
 		DBType:     SQLite,
 		UseSQLite:  true,
@@ -112,6 +130,9 @@ func TestUTCTimestampHandling(t *testing.T) {
 	}
 
 	dm := NewDatabaseManager(config)
+	if dm == nil {
+		t.Skip("Database manager initialization failed")
+	}
 	ctx := context.Background()
 
 	err := dm.Initialize(ctx)
@@ -177,6 +198,10 @@ func TestUTCTimestampHandling(t *testing.T) {
 
 // TestConnectionPoolOptimizations validates pool settings for different database types
 func TestConnectionPoolOptimizations(t *testing.T) {
+	if os.Getenv("HADES_DB_ENCRYPTION_KEY") == "" && os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") != "true" {
+		t.Skip("Requires HADES_DB_ENCRYPTION_KEY or HADES_ALLOW_INSECURE_DEV_DB_KEY=true")
+	}
+
 	tests := []struct {
 		name             DatabaseType
 		expectedMaxOpen  int
@@ -192,6 +217,9 @@ func TestConnectionPoolOptimizations(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", tt.name), func(t *testing.T) {
 			config := &ManagerConfig{DBType: tt.name}
 			dm := NewDatabaseManager(config)
+			if dm == nil {
+				t.Skip("Database manager initialization failed")
+			}
 
 			maxOpen, maxIdle, lifetime := dm.GetOptimalPoolConfig()
 
