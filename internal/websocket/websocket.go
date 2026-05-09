@@ -151,7 +151,7 @@ func (wsm *WebSocketManager) broadcastGovernorIntercept(event bus.Event) {
 	for conn := range wsm.connections {
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("Failed to send governor intercept to WebSocket client: %v", err)
-			conn.Close()
+			_ = conn.Close()
 			delete(wsm.connections, conn)
 		}
 	}

@@ -1,8 +1,8 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -103,14 +103,26 @@ func (ie *IncidentEndpoints) handleCreateIncident(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Create incident (simplified for now)
-	// TODO: Implement proper incident creation
-	// For now, just return success without actual processing
-	_ = context.Background()
+	if incident.Severity == "" {
+		incident.Severity = "medium"
+	}
+	if incident.Priority == 0 {
+		incident.Priority = 3
+	}
+	incident.Created = time.Now()
+	incident.Updated = time.Now()
+	incident.Status = "new"
+
+	createdIncident, err := ie.incidentManager.CreateIncident(&incident)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create incident: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	response := map[string]interface{}{
 		"success":     true,
-		"incident_id": incident.ID,
+		"incident_id": createdIncident.ID,
+		"incident":    createdIncident,
 		"timestamp":   time.Now(),
 	}
 

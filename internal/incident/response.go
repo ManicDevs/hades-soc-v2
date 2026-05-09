@@ -1104,6 +1104,40 @@ func (irm *IncidentResponseManager) GetStats() map[string]interface{} {
 	return stats
 }
 
+// CreateIncident creates a new incident manually
+func (irm *IncidentResponseManager) CreateIncident(inc *Incident) (*Incident, error) {
+	irm.mu.Lock()
+	defer irm.mu.Unlock()
+
+	if inc.ID == "" {
+		inc.ID = generateIncidentID()
+	}
+	if inc.Status == "" {
+		inc.Status = "new"
+	}
+	if inc.Source == "" {
+		inc.Source = "manual"
+	}
+	if inc.Created.IsZero() {
+		inc.Created = time.Now()
+	}
+	if inc.Updated.IsZero() {
+		inc.Updated = time.Now()
+	}
+
+	irm.activeIncidents[inc.ID] = inc
+
+	log.Printf("Incident created: %s - %s", inc.ID, inc.Title)
+
+	return inc, nil
+}
+
+// generateIncidentID generates a unique incident ID
+func generateIncidentID() string {
+	timestamp := time.Now().UnixNano()
+	return fmt.Sprintf("INC-%d", timestamp)
+}
+
 // NewNotificationService creates a new notification service
 func NewNotificationService() *NotificationService {
 	return &NotificationService{

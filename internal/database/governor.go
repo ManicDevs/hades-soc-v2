@@ -309,7 +309,7 @@ func (dm *DatabaseManager) GetRecentActions(ctx context.Context, since time.Time
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent actions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var actions []*GovernorAction
 	for rows.Next() {
@@ -547,7 +547,7 @@ func (dm *DatabaseManager) GetPendingActions(ctx context.Context) ([]*GovernorAc
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending actions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var actions []*GovernorAction
 	for rows.Next() {
