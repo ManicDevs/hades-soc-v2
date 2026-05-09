@@ -1,0 +1,234 @@
+# HADES-V2 Prometheus Alerting Rules for Development Environment
+# Comprehensive monitoring alerts with appropriate thresholds for development
+
+groups:
+  - name: hades.dev.rules
+    rules:
+      # API Service Alerts
+      - alert: HadesAPIDown
+        expr: up{job="hades-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          environment: dev
+          service: api
+        annotations:
+          summary: "HADES API service is down"
+          description: "HADES API service has been down for more than 1 minute"
+          runbook_url: "https://docs.hades.dev/runbooks/api-down"
+
+      - alert: HadesAPIHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="hades-api"}[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+          environment: dev
+          service: api
+        annotations:
+          summary: "HADES API high latency detected"
+          description: "95th percentile latency is {{ $value }}s for more than 2 minutes"
+          runbook_url: "https://docs.hades.dev/runbooks/api-latency"
+
+      - alert: HadesAPIHighErrorRate
+        expr: rate(http_requests_total{job="hades-api",status=~"5.."}[5m]) / rate(http_requests_total{job="hades-api"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          environment: dev
+          service: api
+        annotations:
+          summary: "HADES API high error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for more than 2 minutes"
+          runbook_url: "https://docs.hades.dev/runbooks/api-errors"
+
+      # Database Alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          environment: dev
+          service: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL has been down for more than 1 minute"
+          runbook_url: "https://docs.hades.dev/runbooks/postgres-down"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: database
+        annotations:
+          summary: "PostgreSQL high connection count"
+          description: "PostgreSQL has {{ $value }} connections (threshold: 80)"
+          runbook_url: "https://docs.hades.dev/runbooks/postgres-connections"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          environment: dev
+          service: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+          runbook_url: "https://docs.hades.dev/runbooks/redis-down"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.hades.dev/runbooks/redis-memory"
+
+      # Container Resource Alerts
+      - alert: ContainerHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name=~"hades-.*-dev"}[3m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: infrastructure
+        annotations:
+          summary: "Container high CPU usage"
+          description: "Container {{ $labels.name }} CPU usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.hades.dev/runbooks/container-cpu"
+
+      - alert: ContainerHighMemoryUsage
+        expr: container_memory_usage_bytes{name=~"hades-.*-dev"} / container_spec_memory_limit_bytes{name=~"hades-.*-dev"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: infrastructure
+        annotations:
+          summary: "Container high memory usage"
+          description: "Container {{ $labels.name }} memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.hades.dev/runbooks/container-memory"
+
+      # Health Check Alerts
+      - alert: ServiceHealthCheckFailed
+        expr: probe_success{instance=~"hades-.*-dev"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          environment: dev
+          service: health
+        annotations:
+          summary: "Service health check failed"
+          description: "Health check failed for {{ $labels.instance }}"
+          runbook_url: "https://docs.hades.dev/runbooks/health-check"
+
+      # Disk Space Alerts
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: infrastructure
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          runbook_url: "https://docs.hades.dev/runbooks/disk-space"
+
+      # Network Alerts
+      - alert: HighNetworkTraffic
+        expr: rate(container_network_transmit_bytes_total{name=~"hades-.*-dev"}[5m]) > 10485760  # 10MB/s
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: infrastructure
+        annotations:
+          summary: "High network traffic"
+          description: "Network traffic is {{ $value | humanize1024 }}/s for {{ $labels.name }}"
+          runbook_url: "https://docs.hades.dev/runbooks/network-traffic"
+
+  - name: hades.dev.business.rules
+    rules:
+      # Business Logic Alerts
+      - alert: HighAuthenticationFailureRate
+        expr: rate(hades_auth_failures_total{environment="dev"}[5m]) / rate(hades_auth_attempts_total{environment="dev"}[5m]) > 0.3
+        for: 3m
+        labels:
+          severity: warning
+          environment: dev
+          service: authentication
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.hades.dev/runbooks/auth-failures"
+
+      - alert: LowUserActivity
+        expr: rate(hades_user_requests_total{environment="dev"}[10m]) < 1
+        for: 15m
+        labels:
+          severity: info
+          environment: dev
+          service: business
+        annotations:
+          summary: "Low user activity"
+          description: "User activity rate is {{ $value }} requests/10m"
+          runbook_url: "https://docs.hades.dev/runbooks/user-activity"
+
+      - alert: SecurityEventDetected
+        expr: increase(hades_security_events_total{environment="dev",severity="high"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          environment: dev
+          service: security
+        annotations:
+          summary: "High severity security event detected"
+          description: "{{ $value }} high severity security events in the last 5 minutes"
+          runbook_url: "https://docs.hades.dev/runbooks/security-events"
+
+  - name: hades.dev.performance.rules
+    rules:
+      # Performance Alerts
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_statements_mean_time_seconds{environment="dev"}[5m]) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          environment: dev
+          service: database
+        annotations:
+          summary: "Database slow queries detected"
+          description: "Average query time is {{ $value }}s"
+          runbook_url: "https://docs.hades.dev/runbooks/slow-queries"
+
+      - alert: HighQueueDepth
+        expr: hades_queue_depth{environment="dev"} > 100
+        for: 2m
+        labels:
+          severity: warning
+          environment: dev
+          service: application
+        annotations:
+          summary: "High queue depth"
+          description: "Queue depth is {{ $value }}"
+          runbook_url: "https://docs.hades.dev/runbooks/queue-depth"
+
+      - alert: CacheHitRateLow
+        expr: rate(hades_cache_hits_total{environment="dev"}[5m]) / (rate(hades_cache_hits_total{environment="dev"}[5m]) + rate(hades_cache_misses_total{environment="dev"}[5m])) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          environment: dev
+          service: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.hades.dev/runbooks/cache-hit-rate"
