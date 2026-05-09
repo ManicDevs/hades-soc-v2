@@ -1,0 +1,239 @@
+# HADES-V2 Traefik Dynamic Configuration for Development Environment
+# Middleware and routing rules for enhanced security and performance
+
+http:
+  middlewares:
+    # Security Headers Middleware
+    security-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+          X-Forwarded-Host: "hades-dev.localhost"
+        customResponseHeaders:
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"
+          X-XSS-Protection: "1; mode=block"
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+          Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        accessControlAllowCredentials: true
+        accessControlAllowOriginList:
+          - "https://hades-dev.localhost"
+          - "https://hades-admin-dev.localhost"
+          - "https://hades-monitoring-dev.localhost"
+          - "http://localhost:3000"
+          - "http://localhost:8080"
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Requested-With"
+          - "X-Forwarded-For"
+          - "X-Real-IP"
+
+    # Rate Limiting Middleware
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 200
+
+    # API Rate Limiting (Stricter)
+    api-rate-limit:
+      rateLimit:
+        average: 50
+        period: 1m
+        burst: 100
+
+    # Auth Rate Limiting (Very Strict)
+    auth-rate-limit:
+      rateLimit:
+        average: 10
+        period: 1m
+        burst: 20
+
+    # Compression Middleware
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - application/grpc
+
+    # Circuit Breaker Middleware
+    circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.5"
+        checkPeriod: 5s
+        fallbackDuration: 10s
+        recoveryDuration: 10s
+
+    # Retry Middleware
+    retry:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
+
+    # Buffering Middleware
+    buffering:
+      buffering:
+        maxRequestBodyBytes: 10485760  # 10MB
+        memRequestBodyBytes: 1048576     # 1MB
+        maxResponseBodyBytes: 10485760 # 10MB
+        memResponseBodyBytes: 1048576   # 1MB
+        retryExpression: "IsNetworkError() && Attempts() < 2"
+
+  routers:
+    # API Router
+    hades-api-dev-router:
+      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - api-rate-limit@file
+        - compress@file
+        - circuit-breaker@file
+        - retry@file
+      service: hades-api-dev-service
+      priority: 100
+
+    # Auth Router (Higher Priority)
+    hades-auth-dev-router:
+      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/api/v1/auth`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - auth-rate-limit@file
+        - compress@file
+        - circuit-breaker@file
+        - retry@file
+      service: hades-api-dev-service
+      priority: 200
+
+    # Dashboard Router
+    hades-dashboard-dev-router:
+      rule: "Host(`hades-dev.localhost`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - rate-limit@file
+        - compress@file
+        - buffering@file
+      service: hades-dashboard-dev-service
+      priority: 50
+
+    # Admin Router
+    hades-admin-dev-router:
+      rule: "Host(`hades-admin-dev.localhost`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - rate-limit@file
+        - compress@file
+        - buffering@file
+      service: hades-admin-dev-service
+      priority: 50
+
+    # Monitoring Router
+    hades-monitoring-dev-router:
+      rule: "Host(`hades-monitoring-dev.localhost`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - rate-limit@file
+        - compress@file
+        - buffering@file
+      service: hades-monitoring-dev-service
+      priority: 50
+
+    # WebSocket Router
+    hades-websocket-dev-router:
+      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/ws`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - security-headers@file
+        - api-rate-limit@file
+      service: hades-api-dev-service
+      priority: 150
+
+  services:
+    # API Service with Load Balancing
+    hades-api-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://hades-api-dev:8080"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "5s"
+        passHostHeader: true
+        serversTransport: "secure-transport"
+
+    # Dashboard Service
+    hades-dashboard-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://hades-dashboard-dev:3000"
+        healthCheck:
+          path: "/"
+          interval: "30s"
+          timeout: "5s"
+        passHostHeader: true
+
+    # Admin Service
+    hades-admin-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://hades-admin-dev:8081"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "5s"
+        passHostHeader: true
+
+    # Monitoring Service
+    hades-monitoring-dev-service:
+      loadBalancer:
+        servers:
+          - url: "http://hades-monitoring-dev:3001"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "5s"
+        passHostHeader: true
+
+  serversTransports:
+    secure-transport:
+      insecureSkipVerify: true
+      maxIdleConnsPerHost: 100
+      responseHeaderTimeout: "0s"
+      forwardingTimeout: "0s"
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/etc/ssl/certs/hades-dev.crt"
+        keyFile: "/etc/ssl/private/hades-dev.key"
+  options:
+    default:
+      minVersion: "VersionTLS12"
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+      sniStrict: true
+      curvePreferences:
+        - "CurveP521"
+        - "CurveP384"
+        - "CurveP256"

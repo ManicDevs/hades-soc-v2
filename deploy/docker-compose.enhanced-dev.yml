@@ -1,0 +1,520 @@
+# HADES-V2 Enhanced Development Docker Compose Configuration
+# Advanced development environment with improved orchestration, security, and observability
+
+version: '3.8'
+
+services:
+  # HADES API Server (Enhanced Development)
+  hades-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: development
+    container_name: hades-api-dev
+    ports:
+      - "8080:8080"
+      - "8081:8081"  # Debug port
+    environment:
+      - HADES_API_PORT=8080
+      - HADES_API_HOST=hades-dev.localhost
+      - HADES_DEBUG_PORT=8081
+      - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HADES_DB_ENCRYPTION_KEY=hades-dev-db-encryption-key-2026
+      - DATABASE_URL=postgresql://hades_dev_user:dev_password@postgres-dev:5432/hades_dev?sslmode=disable
+      - GIN_MODE=debug
+      - LOG_LEVEL=debug
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - HADES_DEV_CREDENTIALS=admin:admin123
+      - ENABLE_PROFILING=true
+      - ENABLE_METRICS=true
+      - ENABLE_TRACING=true
+      - JAEGER_ENDPOINT=http://jaeger-dev:14268/api/traces
+      - PROMETHEUS_GATEWAY=http://prometheus-dev:9090
+    volumes:
+      - ../data:/app/data:rw
+      - ../config:/app/config:rw
+      - ../:/app/src:ro  # Source code for hot reload
+      - /app/logs  # Persistent logs
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+      jaeger-dev:
+        condition: service_started
+      prometheus-dev:
+        condition: service_started
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hades-api-dev.rule=Host(`hades-dev.localhost`)"
+      - "traefik.http.services.hades-api-dev.loadbalancer.server.port=8080"
+      - "com.hades.environment=dev"
+      - "com.hades.service=api"
+
+  # HADES Dashboard (Enhanced Development)
+  hades-dashboard:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.frontend
+      target: development
+    container_name: hades-dashboard-dev
+    ports:
+      - "3000:3000"
+      - "3001:3001"  # Vite dev server
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=https://hades-dev.localhost/api
+      - REACT_APP_HOST=hades-dev.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_DEBUG=true
+      - REACT_APP_ENABLE_PROFILING=true
+      - GENERATE_SOURCEMAP=true
+    volumes:
+      - ../web/src:/app/src:rw  # Hot reload source code
+      - ../web/public:/app/public:rw
+      - /app/node_modules/.cache  # Persist cache
+      - /app/.vite  # Persist Vite cache
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hades-dashboard-dev.rule=Host(`hades-dev.localhost`) && PathPrefix(`/`)"
+      - "traefik.http.services.hades-dashboard-dev.loadbalancer.server.port=3000"
+      - "com.hades.environment=dev"
+      - "com.hades.service=dashboard"
+
+  # HADES Admin Panel (Enhanced Development)
+  hades-admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+      target: development
+    container_name: hades-admin-dev
+    ports:
+      - "8082:8081"
+    environment:
+      - HADES_ADMIN_PORT=8081
+      - HADES_ADMIN_HOST=hades-admin-dev.localhost
+      - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - ENABLE_DEBUG=true
+      - ENABLE_PROFILING=true
+    volumes:
+      - ../data:/app/data:rw
+      - ../:/app/src:ro  # Source code for hot reload
+      - /app/logs
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hades-admin-dev.rule=Host(`hades-admin-dev.localhost`)"
+      - "traefik.http.services.hades-admin-dev.loadbalancer.server.port=8081"
+      - "com.hades.environment=dev"
+      - "com.hades.service=admin"
+
+  # HADES Monitoring (Enhanced Development)
+  hades-monitoring:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.monitoring
+      target: development
+    container_name: hades-monitoring-dev
+    ports:
+      - "3002:3001"
+    environment:
+      - HADES_MONITORING_PORT=3001
+      - HADES_MONITORING_HOST=hades-monitoring-dev.localhost
+      - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - METRICS_ENABLED=true
+      - PROMETHEUS_URL=http://prometheus-dev:9090
+      - GRAFANA_URL=http://grafana-dev:3000
+    depends_on:
+      - prometheus-dev
+      - grafana-dev
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hades-monitoring-dev.rule=Host(`hades-monitoring-dev.localhost`)"
+      - "traefik.http.services.hades-monitoring-dev.loadbalancer.server.port=3001"
+      - "com.hades.environment=dev"
+      - "com.hades.service=monitoring"
+
+  # PostgreSQL Database (Enhanced Development)
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: hades-postgres-dev
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=hades_dev
+      - POSTGRES_USER=hades_dev_user
+      - POSTGRES_PASSWORD=dev_password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data:rw
+      - ./init-db-dev.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - ./postgresql-dev.conf:/etc/postgresql/postgresql.conf:ro
+      - postgres_dev_logs:/var/log/postgresql
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hades_dev_user -d hades_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=database"
+
+  # Redis Cache (Enhanced Development)
+  redis-dev:
+    image: redis:7-alpine
+    container_name: hades-redis-dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis-dev-password-2026 --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_dev_data:/data:rw
+      - ./redis-dev.conf:/etc/redis/redis.conf:ro
+      - redis_dev_logs:/var/log/redis
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=cache"
+
+  # Jaeger Tracing (Development)
+  jaeger-dev:
+    image: jaegertracing/all-in-one:latest
+    container_name: hades-jaeger-dev
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # HTTP collector
+      - "6831:6831/udp"  # UDP agent
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - SPAN_STORAGE_TYPE=memory
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=tracing"
+
+  # Prometheus Monitoring (Development)
+  prometheus-dev:
+    image: prom/prometheus:latest
+    container_name: hades-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus-dev.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_dev_data:/prometheus
+      - ./prometheus-rules-dev:/etc/prometheus/rules:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=monitoring"
+
+  # Grafana Dashboard (Development)
+  grafana-dev:
+    image: grafana/grafana:latest
+    container_name: hades-grafana-dev
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=grafana-admin-dev
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SERVER_ROOT_URL=http://localhost:3003
+    volumes:
+      - grafana_dev_data:/var/lib/grafana
+      - ./grafana/provisioning-dev:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards-dev:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus-dev
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=visualization"
+
+  # Traefik Reverse Proxy (Development)
+  traefik-dev:
+    image: traefik:v2.10
+    container_name: hades-traefik-dev
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik-dev.yml:/etc/traefik/traefik.yml:ro
+      - ./ssl:/etc/ssl/certs:ro
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=proxy"
+
+  # Development Tools Container
+  dev-tools:
+    build:
+      context: ./dev-tools
+      dockerfile: Dockerfile
+    container_name: hades-dev-tools
+    ports:
+      - "8084:8080"  # Dev tools UI
+    volumes:
+      - ../:/workspace:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WORKSPACE_DIR=/workspace
+      - ENABLE_AUTO_RELOAD=true
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=tools"
+
+networks:
+  hades-dev-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.network=development"
+
+volumes:
+  postgres_dev_data:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=database"
+  postgres_dev_logs:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=database"
+  redis_dev_data:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=cache"
+  redis_dev_logs:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=cache"
+  prometheus_dev_data:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=monitoring"
+  grafana_dev_data:
+    driver: local
+    labels:
+      - "com.hades.environment=dev"
+      - "com.hades.service=visualization"

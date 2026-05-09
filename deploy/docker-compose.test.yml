@@ -1,0 +1,228 @@
+# HADES-V2 Test Docker Compose Configuration
+# Test environment with isolated databases and testing tools
+
+version: '3.8'
+
+services:
+  # HADES API Server (Test)
+  hades-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hades-api-test
+    ports:
+      - "8180:8180"
+    environment:
+      - HADES_API_PORT=8180
+      - HADES_API_HOST=hades-test.localhost
+      - HADES_JWT_SECRET=hades-test-jwt-secret-2026
+      - HADES_DB_ENCRYPTION_KEY=hades-test-db-encryption-key-2026
+      - DATABASE_URL=postgresql://hades_test_user:test_password@postgres-test:5433/hades_test?sslmode=disable
+      - GIN_MODE=release
+      - LOG_LEVEL=info
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=test
+      - HADES_DEV_CREDENTIALS=test:test123
+    volumes:
+      - ../data:/app/data
+      - ../config:/app/config
+    depends_on:
+      - postgres-test
+      - redis-test
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # HADES Dashboard (Test)
+  hades-dashboard:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.frontend
+    container_name: hades-dashboard-test
+    ports:
+      - "3100:3100"
+    environment:
+      - NODE_ENV=test
+      - REACT_APP_API_URL=https://hades-test.localhost/api
+      - REACT_APP_HOST=hades-test.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=test
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Admin Panel (Test)
+  hades-admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+    container_name: hades-admin-test
+    ports:
+      - "8181:8181"
+    environment:
+      - HADES_ADMIN_PORT=8181
+      - HADES_ADMIN_HOST=hades-admin-test.localhost
+      - HADES_JWT_SECRET=hades-test-jwt-secret-2026
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=test
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      - postgres-test
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Monitoring (Test)
+  hades-monitoring:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.monitoring
+    container_name: hades-monitoring-test
+    ports:
+      - "3101:3101"
+    environment:
+      - HADES_MONITORING_PORT=3101
+      - HADES_MONITORING_HOST=hades-monitoring-test.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=test
+    depends_on:
+      - postgres-test
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # PostgreSQL Database (Test)
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: hades-postgres-test
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=hades_test
+      - POSTGRES_USER=hades_test_user
+      - POSTGRES_PASSWORD=test_password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./init-db-test.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hades_test_user -d hades_test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Test)
+  redis-test:
+    image: redis:7-alpine
+    container_name: hades-redis-test
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --requirepass redis-test-password-2026
+    volumes:
+      - redis_test_data:/data
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test Runner
+  test-runner:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.test
+    container_name: hades-test-runner
+    environment:
+      - TEST_API_URL=https://hades-test.localhost/api
+      - TEST_ENVIRONMENT=test
+      - TEST_TIMEOUT=30000
+    volumes:
+      - ../tests:/app/tests
+      - test_results:/app/results
+    depends_on:
+      - hades-api
+      - hades-dashboard
+    networks:
+      - hades-test-network
+    profiles:
+      - testing
+
+  # Load Testing
+  load-test:
+    image: grafana/k6:latest
+    container_name: hades-load-test
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus-test:9090/api/v1/write
+    volumes:
+      - ../tests/load:/scripts
+    depends_on:
+      - hades-api
+      - prometheus-test
+    networks:
+      - hades-test-network
+    profiles:
+      - load-testing
+
+  # Prometheus (Test Monitoring)
+  prometheus-test:
+    image: prom/prometheus:latest
+    container_name: hades-prometheus-test
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus-test.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_test_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+    networks:
+      - hades-test-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  hades-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+  prometheus_test_data:
+    driver: local
+  test_results:
+    driver: local

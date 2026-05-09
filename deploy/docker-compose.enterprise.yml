@@ -1,0 +1,315 @@
+# HADES-V2 Enterprise Docker Compose Configuration
+# Production-ready with load balancer, monitoring, and security
+
+version: '3.8'
+
+services:
+  # Load Balancer (Nginx)
+  nginx:
+    image: nginx:1.24-alpine
+    container_name: hades-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl/certs:ro
+      - ./ssl:/etc/ssl/private:ro
+    depends_on:
+      - hades-api
+      - hades-dashboard
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+  # HAProxy Load Balancer
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: hades-haproxy
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "9000:9000"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+    depends_on:
+      - hades-api
+      - hades-dashboard
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES API Server (Primary)
+  hades-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hades-api
+    ports:
+      - "8443:8443"
+    environment:
+      - HADES_API_PORT=8443
+      - HADES_API_HOST=hades-prod.localhost
+      - HADES_JWT_SECRET=${HADES_JWT_SECRET}
+      - HADES_DB_ENCRYPTION_KEY=${HADES_DB_ENCRYPTION_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - GIN_MODE=release
+      - LOG_LEVEL=info
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=prod
+    volumes:
+      - ../data:/app/data
+      - ../config:/app/config
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # HADES Dashboard
+  hades-dashboard:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.frontend
+    container_name: hades-dashboard
+    ports:
+      - "8444:8444"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=https://hades-prod.localhost/api
+      - REACT_APP_HOST=hades-prod.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=prod
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Admin Panel
+  hades-admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+    container_name: hades-admin
+    ports:
+      - "8445:8445"
+    environment:
+      - HADES_ADMIN_PORT=8445
+      - HADES_ADMIN_HOST=hades-admin-prod.localhost
+      - HADES_JWT_SECRET=${HADES_JWT_SECRET}
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=prod
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      - postgres
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Monitoring
+  hades-monitoring:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.monitoring
+    container_name: hades-monitoring
+    ports:
+      - "8446:8446"
+    environment:
+      - HADES_MONITORING_PORT=8446
+      - HADES_MONITORING_HOST=hades-monitoring-prod.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=prod
+    depends_on:
+      - postgres
+      - prometheus
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: hades-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=hades_db
+      - POSTGRES_USER=hades_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hades_user -d hades_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: hades-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hades-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hades-grafana
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # Jaeger Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: hades-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: hades-elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    container_name: hades-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - hades-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  hades-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local

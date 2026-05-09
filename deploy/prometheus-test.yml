@@ -1,0 +1,90 @@
+# HADES-V2 Prometheus Configuration for Test Environment
+# Test environment monitoring configuration
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    environment: 'test'
+    cluster: 'hades-test'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  # Prometheus Self Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 60s
+    metrics_path: '/metrics'
+
+  # HADES API Metrics - Test
+  - job_name: 'hades-api-test'
+    static_configs:
+      - targets: ['hades-api-test:8180']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-api-test'
+      - source_labels: [__meta_docker_container_name]
+        target_label: container_name
+
+  # HADES Dashboard Metrics - Test
+  - job_name: 'hades-dashboard-test'
+    static_configs:
+      - targets: ['hades-dashboard-test:3100']
+    scrape_interval: 60s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-dashboard-test'
+
+  # HADES Admin Metrics - Test
+  - job_name: 'hades-admin-test'
+    static_configs:
+      - targets: ['hades-admin-test:8181']
+    scrape_interval: 60s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-admin-test'
+
+  # HADES Monitoring Metrics - Test
+  - job_name: 'hades-monitoring-test'
+    static_configs:
+      - targets: ['hades-monitoring-test:3101']
+    scrape_interval: 60s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-monitoring-test'
+
+  # PostgreSQL Metrics - Test
+  - job_name: 'postgres-test'
+    static_configs:
+      - targets: ['postgres-test:5432']
+    scrape_interval: 60s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'postgres-test'
+
+  # Redis Metrics - Test
+  - job_name: 'redis-test'
+    static_configs:
+      - targets: ['redis-test:6379']
+    scrape_interval: 60s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'redis-test'
+
+# No remote write for test environment - uses local storage only

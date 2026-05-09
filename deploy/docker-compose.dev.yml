@@ -1,0 +1,185 @@
+# HADES-V2 Development Docker Compose Configuration
+# Development environment with debugging and hot reload enabled
+
+version: '3.8'
+
+services:
+  # HADES API Server (Development)
+  hades-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hades-api-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - HADES_API_PORT=8080
+      - HADES_API_HOST=hades-dev.localhost
+      - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HADES_DB_ENCRYPTION_KEY=hades-dev-db-encryption-key-2026
+      - DATABASE_URL=postgresql://hades_dev_user:dev_password@postgres-dev:5432/hades_dev?sslmode=disable
+      - GIN_MODE=debug
+      - LOG_LEVEL=debug
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - HADES_DEV_CREDENTIALS=admin:admin123
+    volumes:
+      - ../data:/app/data
+      - ../config:/app/config
+      - ../:/app/src  # Hot reload source code
+    depends_on:
+      - postgres-dev
+      - redis-dev
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # HADES Dashboard (Development)
+  hades-dashboard:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.frontend
+    container_name: hades-dashboard-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=https://hades-dev.localhost/api
+      - REACT_APP_HOST=hades-dev.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+      - CHOKIDAR_USEPOLLING=true  # Enable hot reload
+    volumes:
+      - ../web/src:/app/src  # Hot reload source code
+      - ../web/public:/app/public
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Admin Panel (Development)
+  hades-admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+    container_name: hades-admin-dev
+    ports:
+      - "8081:8081"
+    environment:
+      - HADES_ADMIN_PORT=8081
+      - HADES_ADMIN_HOST=hades-admin-dev.localhost
+      - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+    volumes:
+      - ../data:/app/data
+      - ../:/app/src  # Hot reload source code
+    depends_on:
+      - postgres-dev
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # HADES Monitoring (Development)
+  hades-monitoring:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.monitoring
+    container_name: hades-monitoring-dev
+    ports:
+      - "3001:3001"
+    environment:
+      - HADES_MONITORING_PORT=3001
+      - HADES_MONITORING_HOST=hades-monitoring-dev.localhost
+      - HOST_SEGMENT=hades
+      - ENVIRONMENT=dev
+    depends_on:
+      - postgres-dev
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # PostgreSQL Database (Development)
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: hades-postgres-dev
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=hades_dev
+      - POSTGRES_USER=hades_dev_user
+      - POSTGRES_PASSWORD=dev_password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init-db-dev.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hades_dev_user -d hades_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Development)
+  redis-dev:
+    image: redis:7-alpine
+    container_name: hades-redis-dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis-dev-password-2026
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Development Tools
+  dev-tools:
+    image: nginx:alpine
+    container_name: hades-dev-tools
+    ports:
+      - "8088:80"
+    volumes:
+      - ./nginx-dev.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - hades-dev-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  hades-dev-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local

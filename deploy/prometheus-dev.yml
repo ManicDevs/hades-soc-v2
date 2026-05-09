@@ -1,0 +1,201 @@
+# HADES-V2 Prometheus Configuration for Development Environment
+# Comprehensive monitoring with custom metrics and alerting rules
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'dev'
+    cluster: 'hades-dev'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager-dev:9093
+
+scrape_configs:
+  # Prometheus Self Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # HADES API Metrics
+  - job_name: 'hades-api'
+    static_configs:
+      - targets: ['hades-api-dev:8080']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-api-dev'
+      - source_labels: [__meta_docker_container_name]
+        target_label: container_name
+
+  # HADES Dashboard Metrics
+  - job_name: 'hades-dashboard'
+    static_configs:
+      - targets: ['hades-dashboard-dev:3000']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-dashboard-dev'
+
+  # HADES Admin Metrics
+  - job_name: 'hades-admin'
+    static_configs:
+      - targets: ['hades-admin-dev:8081']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-admin-dev'
+
+  # HADES Monitoring Metrics
+  - job_name: 'hades-monitoring'
+    static_configs:
+      - targets: ['hades-monitoring-dev:3001']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-monitoring-dev'
+
+  # PostgreSQL Metrics
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter-dev:9187']
+    scrape_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'postgres-dev'
+
+  # Redis Metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter-dev:9121']
+    scrape_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'redis-dev'
+
+  # Traefik Metrics
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['traefik-dev:8080']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'traefik-dev'
+
+  # Node Exporter (System Metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter-dev:9100']
+    scrape_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-dev-host'
+
+  # Docker Container Metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker-exporter-dev:9323']
+    scrape_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'docker-dev'
+
+  # Jaeger Metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger-dev:14269']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'jaeger-dev'
+
+  # Grafana Metrics
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana-dev:3000']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'grafana-dev'
+
+  # Custom Application Metrics
+  - job_name: 'hades-app-metrics'
+    static_configs:
+      - targets: ['hades-api-dev:8080']
+    scrape_interval: 15s
+    metrics_path: '/api/v1/metrics'
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'hades-app-dev'
+      - source_labels: [__meta_docker_container_label_com_hades_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_com_hades_environment]
+        target_label: environment
+
+  # Health Check Metrics
+  - job_name: 'health-checks'
+    static_configs:
+      - targets:
+        - 'hades-api-dev:8080'
+        - 'hades-dashboard-dev:3000'
+        - 'hades-admin-dev:8081'
+        - 'hades-monitoring-dev:3001'
+    scrape_interval: 30s
+    metrics_path: '/health'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: 'hades-(.*)-dev:([0-9]+)'
+        replacement: '${1}'
+      - source_labels: [__address__]
+        target_label: service
+        regex: 'hades-(.*)-dev:([0-9]+)'
+        replacement: '${1}'
+      - source_labels: [__address__]
+        target_label: port
+        regex: 'hades-(.*)-dev:([0-9]+)'
+        replacement: '${2}'
+
+# Remote Write Configuration (for long-term storage)
+remote_write:
+  - url: "http://prometheus-remote-dev:9090/api/v1/write"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+
+# Remote Read Configuration (for querying long-term data)
+remote_read:
+  - url: "http://prometheus-remote-dev:9090/api/v1/read"
+    read_recent: true

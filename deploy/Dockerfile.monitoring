@@ -1,0 +1,43 @@
+# HADES-V2 Monitoring Dockerfile
+
+# Development stage - Full development environment
+FROM golang:1.25-alpine AS development
+
+# Install build dependencies for CGO
+RUN apk add --no-cache gcc musl-dev sqlite-dev
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=1 GOOS=linux go build -o hades-monitoring ./cmd/hades
+
+# Install development tools
+RUN go install -a github.com/air-verse/air@latest
+
+# Set development environment
+ENV GIN_MODE=debug
+ENV HADES_ENV=development
+
+EXPOSE 3001
+CMD ["./hades-monitoring"]
+
+# Production builder stage
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o hades-monitoring ./cmd/hades
+
+# Production stage
+FROM alpine:3.19
+RUN apk --no-cache add ca-certificates tzdata curl
+WORKDIR /app
+COPY --from=builder /app/hades-monitoring .
+
+EXPOSE 8446
+CMD ["./hades-monitoring"]
