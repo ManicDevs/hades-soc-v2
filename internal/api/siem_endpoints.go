@@ -44,6 +44,7 @@ func (se *SIEMEndpoints) registerRoutes() {
 	se.router.HandleFunc("/api/v2/siem/alerts", se.handleGetAlerts)
 	se.router.HandleFunc("/api/v2/siem/incidents", se.handleGetIncidents)
 	se.router.HandleFunc("/api/v2/siem/events", se.handleGetEvents)
+	se.router.HandleFunc("/api/v2/siem/events/process", se.handleProcessEvent)
 	se.router.HandleFunc("/api/v2/siem/correlations", se.handleGetCorrelations)
 	se.router.HandleFunc("/api/v2/siem/status", se.handleGetStatus)
 }

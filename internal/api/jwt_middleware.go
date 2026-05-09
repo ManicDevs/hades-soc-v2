@@ -9,6 +9,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type contextKey string
+
+const (
+	ctxUserID   contextKey = "user_id"
+	ctxUsername contextKey = "username"
+	ctxRole     contextKey = "role"
+)
+
 func getClaimsFromRequest(r *http.Request) (*JWTClaims, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -35,7 +43,7 @@ func getClaimsFromRequest(r *http.Request) (*JWTClaims, bool) {
 	if !ok {
 		return nil, false
 	}
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 		return nil, false
 	}
 	return claims, true
@@ -99,15 +107,15 @@ func (s *Server) JWTMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Check if token is expired
-		if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 			s.writeError(w, http.StatusUnauthorized, "Token expired")
 			return
 		}
 
 		// Add user context to request
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "role", claims.Role)
+		ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxUsername, claims.Username)
+		ctx = context.WithValue(ctx, ctxRole, claims.Role)
 
 		// Call next handler with updated context
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -174,9 +182,9 @@ func (s *Server) OptionalAuth(next http.Handler) http.Handler {
 		// Extract claims if valid
 		if claims, ok := token.Claims.(*JWTClaims); ok {
 			// Add user context to request
-			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-			ctx = context.WithValue(ctx, "username", claims.Username)
-			ctx = context.WithValue(ctx, "role", claims.Role)
+			ctx := context.WithValue(r.Context(), ctxUserID, claims.UserID)
+			ctx = context.WithValue(ctx, ctxUsername, claims.Username)
+			ctx = context.WithValue(ctx, ctxRole, claims.Role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
