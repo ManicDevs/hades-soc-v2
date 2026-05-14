@@ -10,8 +10,8 @@ import (
 	_ "github.com/lib/pq"
 	// MySQL driver
 	_ "github.com/go-sql-driver/mysql"
-	// SQLite driver
-	_ "github.com/mattn/go-sqlite3"
+	// SQLite driver (pure Go - no CGO required)
+	_ "modernc.org/sqlite"
 )
 
 // DatabaseType represents supported database types
@@ -20,7 +20,7 @@ type DatabaseType string
 const (
 	PostgreSQL DatabaseType = "postgresql"
 	MySQL      DatabaseType = "mysql"
-	SQLite     DatabaseType = "sqlite3"
+	SQLite     DatabaseType = "sqlite"
 	// MongoDB and Redis will be added later
 )
 
@@ -88,7 +88,7 @@ func (s *SQLDatabase) Connect(config DatabaseConfig) error {
 	case MySQL:
 		driverName = "mysql"
 	case SQLite:
-		driverName = "sqlite3"
+		driverName = "sqlite"
 	}
 
 	db, err := sql.Open(driverName, dsn)

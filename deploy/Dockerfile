@@ -72,6 +72,9 @@ WORKDIR /build
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 
+# Copy torgo for local replace directive
+COPY torgo ./torgo
+
 # Download dependencies
 RUN go mod download && go mod verify
 
@@ -83,8 +86,8 @@ ARG VERSION=dev
 ARG BUILD_TIME
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.version=${VERSION} -X main.buildTime=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-    -o sentinel \
-    ./cmd/sentinel
+    -o hades \
+    ./cmd/hades
 
 # Runtime stage - Minimal Alpine with security hardening
 FROM alpine:3.19
@@ -107,13 +110,13 @@ RUN mkdir -p /app/data /app/logs /app/config \
     && chown -R hades:hades /app
 
 # Copy binary from builder stage
-COPY --from=builder /build/sentinel /app/sentinel
+COPY --from=builder /build/hades /app/hades
 
 # Copy configuration files
 COPY --chown=hades:hades .env.production /app/.env
 
 # Set ownership and permissions
-RUN chmod +x /app/sentinel \
+RUN chmod +x /app/hades \
     && chmod 600 /app/.env
 
 # Switch to non-root user
@@ -131,4 +134,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:2112/health || exit 1
 
 # Default command
-CMD ["/app/sentinel"]
+CMD ["/app/hades", "api"]

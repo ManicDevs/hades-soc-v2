@@ -10,10 +10,9 @@ entryPoints:
   web:
     address: ":80"
     http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
+      middlewares:
+        - security-headers@file
+        - rate-limit@file
   websecure:
     address: ":443"
     http:
@@ -27,14 +26,8 @@ entryPoints:
         - rate-limit@file
 
 providers:
-  docker:
-    exposedByDefault: false
-    network: hades-dev-network
-    swarmMode: false
-    watch: true
   file:
-    directory: /etc/traefik/dynamic
-    watch: true
+    filename: /etc/traefik/dynamic.yml
 
 certificatesResolvers:
   letsencrypt:

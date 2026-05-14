@@ -106,7 +106,10 @@ func (vm *VersionManager) MigrationHandler(w http.ResponseWriter, r *http.Reques
 
 // HealthHandler returns version-aware health information
 func (vm *VersionManager) HealthHandler(w http.ResponseWriter, r *http.Request) {
-	version := r.Context().Value("api_version").(string)
+	version := "v2"
+	if v := r.Context().Value("api_version"); v != nil {
+		version = v.(string)
+	}
 
 	health := map[string]interface{}{
 		"status":         "healthy",

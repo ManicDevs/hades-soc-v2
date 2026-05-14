@@ -8,16 +8,12 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
-
-# Install development tools
-RUN npm install -g nodemon concurrently
 
 # Set development environment
 ENV NODE_ENV=development
 ENV CHOKIDAR_USEPOLLING=true
 
-EXPOSE 3000
+EXPOSE 3000 3001
 CMD ["npm", "run", "dev"]
 
 # Production builder stage

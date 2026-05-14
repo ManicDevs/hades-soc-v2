@@ -83,21 +83,33 @@ type DatabaseMulti struct {
 	mu     sync.RWMutex
 }
 
-// NewDatabaseMulti creates a new multi-database instance using unified DatabaseManager
+// NewDatabaseMulti creates a new multi-database instance using DatabaseManager
 func NewDatabaseMulti(config *DatabaseConfigMulti) (*DatabaseMulti, error) {
 	if config == nil {
 		config = DefaultDatabaseConfigMulti(DatabaseSQLite)
 	}
 
-	mgr := database.GetManager()
+	// Map platform.DatabaseType to database.DatabaseType
+	var dbType database.DatabaseType
+	switch config.Type {
+	case DatabaseSQLite:
+		dbType = database.SQLite
+	case DatabasePostgres:
+		dbType = database.PostgreSQL
+	case DatabaseMySQL:
+		dbType = database.MySQL
+	default:
+		dbType = database.SQLite
+	}
 
 	managerConfig := &database.ManagerConfig{
 		Database:     config.Database,
 		MaxOpenConns: config.MaxConnections,
 		MaxIdleConns: 5,
 		ConnLifetime: 5 * time.Minute,
-		UseSQLite:    config.Type == DatabaseSQLite,
+		UseSQLite:    config.Type == DatabaseSQLite || config.Type == "",
 		SQLitePath:   config.Database,
+		DBType:       dbType,
 	}
 
 	if config.Type == DatabasePostgres {
@@ -105,7 +117,11 @@ func NewDatabaseMulti(config *DatabaseConfigMulti) (*DatabaseMulti, error) {
 			config.Host, config.Port, config.Username, config.Password, config.Database, config.SSLMode)
 	}
 
-	mgr.SetConfig(managerConfig)
+	// Create a fresh database manager instead of using singleton
+	mgr := database.NewDatabaseManager(managerConfig)
+	if mgr == nil {
+		return nil, fmt.Errorf("hades.platform.database: failed to create database manager")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -194,6 +210,8 @@ func (dm *DatabaseMulti) configureDatabase() error {
 func (dm *DatabaseMulti) createTables() error {
 	var queries []string
 
+	log.Printf("DatabaseMulti.createTables: Creating tables for type %v", dm.config.Type)
+
 	switch dm.config.Type {
 	case DatabaseSQLite:
 		queries = dm.getSQLiteSchema()
@@ -205,12 +223,14 @@ func (dm *DatabaseMulti) createTables() error {
 		queries = dm.getSQLiteSchema()
 	}
 
-	for _, query := range queries {
+	for i, query := range queries {
+		log.Printf("DatabaseMulti.createTables: Executing query %d/%d", i+1, len(queries))
 		if _, err := dm.db.Exec(query); err != nil {
 			return fmt.Errorf("hades.platform.database: failed to execute query: %s, error: %w", query, err)
 		}
 	}
 
+	log.Printf("DatabaseMulti.createTables: All %d queries executed successfully", len(queries))
 	return nil
 }
 

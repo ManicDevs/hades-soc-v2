@@ -1,0 +1,17 @@
+{
+  "$schema": "file:///home/cerberus/.config/opencode/schema.json",
+  "model": "anthropic/claude-3-5-sonnet-latest",
+  "instructions": [
+    "./workflow.md"
+  ],
+  "agents": {
+    "hades-agent": {
+      "name": "Hades",
+      "instructions": "Operate with high autonomy on code refactoring tasks."
+    }
+  },
+  "permissions": {
+    "git": "ask",
+    "file_delete": "ask"
+  }
+}

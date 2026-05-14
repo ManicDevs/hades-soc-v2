@@ -54,13 +54,13 @@ func TestNode(t *testing.T) {
 
 func TestDeployment(t *testing.T) {
 	deployment := Deployment{
-		ID:          "deploy-001",
-		Name:        "hades-api",
-		Namespace:   "hades",
-		Replicas:    3,
+		ID:            "deploy-001",
+		Name:          "hades-api",
+		Namespace:     "hades",
+		Replicas:      3,
 		ReadyReplicas: 3,
-		Image:       "hades:latest",
-		Status:      "running",
+		Image:         "hades:latest",
+		Status:        "running",
 	}
 
 	if deployment.ID != "deploy-001" {

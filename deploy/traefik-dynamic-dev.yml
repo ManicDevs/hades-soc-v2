@@ -7,22 +7,23 @@ http:
     security-headers:
       headers:
         customRequestHeaders:
-          X-Forwarded-Proto: "https"
-          X-Forwarded-Host: "hades-dev.localhost"
+          X-Forwarded-Proto: "http"
+          X-Forwarded-Host: "hades.localhost"
         customResponseHeaders:
           X-Frame-Options: "DENY"
           X-Content-Type-Options: "nosniff"
           X-XSS-Protection: "1; mode=block"
-          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
           Referrer-Policy: "strict-origin-when-cross-origin"
-          Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+          Content-Security-Policy: "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
         accessControlAllowCredentials: true
         accessControlAllowOriginList:
-          - "https://hades-dev.localhost"
-          - "https://hades-admin-dev.localhost"
-          - "https://hades-monitoring-dev.localhost"
+          - "http://api.hades.localhost:8084"
+          - "http://dashboard.hades.localhost:8084"
+          - "http://admin.hades.localhost:8084"
+          - "http://monitoring.hades.localhost:8084"
           - "http://localhost:3000"
           - "http://localhost:8080"
+          - "http://localhost:8084"
         accessControlAllowMethods:
           - "GET"
           - "POST"
@@ -30,11 +31,9 @@ http:
           - "DELETE"
           - "OPTIONS"
         accessControlAllowHeaders:
-          - "Content-Type"
-          - "Authorization"
-          - "X-Requested-With"
-          - "X-Forwarded-For"
-          - "X-Real-IP"
+          - "*"
+        accessControlExposeHeaders:
+          - "*"
 
     # Rate Limiting Middleware
     rate-limit:
@@ -90,81 +89,43 @@ http:
   routers:
     # API Router
     hades-api-dev-router:
-      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/api`)"
+      rule: "Host(`api.hades.localhost`)"
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - security-headers@file
-        - api-rate-limit@file
-        - compress@file
-        - circuit-breaker@file
-        - retry@file
+        - rate-limit@file
       service: hades-api-dev-service
-      priority: 100
-
-    # Auth Router (Higher Priority)
-    hades-auth-dev-router:
-      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/api/v1/auth`)"
-      entryPoints:
-        - websecure
-      middlewares:
-        - security-headers@file
-        - auth-rate-limit@file
-        - compress@file
-        - circuit-breaker@file
-        - retry@file
-      service: hades-api-dev-service
-      priority: 200
 
     # Dashboard Router
     hades-dashboard-dev-router:
-      rule: "Host(`hades-dev.localhost`)"
+      rule: "Host(`dashboard.hades.localhost`)"
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - security-headers@file
         - rate-limit@file
-        - compress@file
-        - buffering@file
       service: hades-dashboard-dev-service
-      priority: 50
 
     # Admin Router
     hades-admin-dev-router:
-      rule: "Host(`hades-admin-dev.localhost`)"
+      rule: "Host(`admin.hades.localhost`)"
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - security-headers@file
         - rate-limit@file
-        - compress@file
-        - buffering@file
       service: hades-admin-dev-service
-      priority: 50
 
     # Monitoring Router
     hades-monitoring-dev-router:
-      rule: "Host(`hades-monitoring-dev.localhost`)"
+      rule: "Host(`monitoring.hades.localhost`)"
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - security-headers@file
         - rate-limit@file
-        - compress@file
-        - buffering@file
       service: hades-monitoring-dev-service
-      priority: 50
-
-    # WebSocket Router
-    hades-websocket-dev-router:
-      rule: "Host(`hades-dev.localhost`) && PathPrefix(`/ws`)"
-      entryPoints:
-        - websecure
-      middlewares:
-        - security-headers@file
-        - api-rate-limit@file
-      service: hades-api-dev-service
-      priority: 150
 
   services:
     # API Service with Load Balancing
@@ -172,10 +133,6 @@ http:
       loadBalancer:
         servers:
           - url: "http://hades-api-dev:8080"
-        healthCheck:
-          path: "/health"
-          interval: "30s"
-          timeout: "5s"
         passHostHeader: true
         serversTransport: "secure-transport"
 
@@ -184,40 +141,26 @@ http:
       loadBalancer:
         servers:
           - url: "http://hades-dashboard-dev:3000"
-        healthCheck:
-          path: "/"
-          interval: "30s"
-          timeout: "5s"
         passHostHeader: true
 
     # Admin Service
     hades-admin-dev-service:
       loadBalancer:
         servers:
-          - url: "http://hades-admin-dev:8081"
-        healthCheck:
-          path: "/health"
-          interval: "30s"
-          timeout: "5s"
+          - url: "http://hades-admin-dev:8080"
         passHostHeader: true
 
     # Monitoring Service
     hades-monitoring-dev-service:
       loadBalancer:
         servers:
-          - url: "http://hades-monitoring-dev:3001"
-        healthCheck:
-          path: "/health"
-          interval: "30s"
-          timeout: "5s"
+          - url: "http://hades-monitoring-dev:8080"
         passHostHeader: true
 
   serversTransports:
     secure-transport:
       insecureSkipVerify: true
       maxIdleConnsPerHost: 100
-      responseHeaderTimeout: "0s"
-      forwardingTimeout: "0s"
 
 tls:
   stores:

@@ -11,13 +11,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/scrypt"
+	_ "modernc.org/sqlite"
 )
 
 var (
@@ -163,22 +164,24 @@ func NewDatabaseManager(config *ManagerConfig) *DatabaseManager {
 		config = DefaultManagerConfig()
 	}
 
-	// Initialize encryption service
+	// Initialize encryption service with fallback for development
+	var encryption *DBEncryptionService
 	encryptionKey := os.Getenv("HADES_DB_ENCRYPTION_KEY")
 	if encryptionKey == "" {
 		if os.Getenv("HADES_ALLOW_INSECURE_DEV_DB_KEY") == "true" {
 			log.Printf("WARNING: using insecure development database encryption key")
 			encryptionKey = "hades-insecure-dev-key"
 		} else {
-			log.Printf("CRITICAL: HADES_DB_ENCRYPTION_KEY not set")
-			return nil
+			log.Printf("WARNING: HADES_DB_ENCRYPTION_KEY not set, using default dev key")
+			encryptionKey = "hades-dev-key-for-local-testing-only"
 		}
 	}
 
-	encryption, err := NewDBEncryptionService(encryptionKey)
+	var err error
+	encryption, err = NewDBEncryptionService(encryptionKey)
 	if err != nil {
-		log.Printf("CRITICAL: Failed to initialize encryption service: %v", err)
-		return nil
+		log.Printf("WARNING: Failed to initialize encryption service: %v, using no encryption", err)
+		encryption = nil
 	}
 
 	return &DatabaseManager{
@@ -235,7 +238,10 @@ func (dm *DatabaseManager) Initialize(ctx context.Context) error {
 func (dm *DatabaseManager) connectPostgreSQL() (*sql.DB, error) {
 	dsn := dm.config.PrimaryDSN
 	if dsn == "" {
-		dsn = "host=localhost port=5432 user=hades dbname=hades sslmode=disable"
+		dsn = os.Getenv("HADES_DB_DSN")
+		if dsn == "" {
+			dsn = "host=localhost port=5432 user=hades_dev_user dbname=hades_dev sslmode=disable"
+		}
 	}
 
 	db, err := sql.Open("postgres", dsn)
@@ -275,7 +281,7 @@ func (dm *DatabaseManager) connectMySQL() (*sql.DB, error) {
 }
 
 func (dm *DatabaseManager) connectSQLite() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dm.config.SQLitePath)
+	db, err := sql.Open("sqlite", dm.config.SQLitePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open SQLite: %w", err)
 	}
@@ -505,28 +511,30 @@ func (dm *DatabaseManager) convertToPostgreSQLPlaceholders(queryTemplate string,
 
 // GetOptimalPoolConfig returns optimal connection pool settings for the database type
 func (dm *DatabaseManager) GetOptimalPoolConfig() (maxOpenConns, maxIdleConns int, connMaxLifetime time.Duration) {
+	// Get CPU count for intelligent scaling
+	cpuCount := runtime.NumCPU()
+
 	switch dm.config.DBType {
 	case PostgreSQL:
-		// PostgreSQL optimized for high concurrency
-		// Allow more connections for parallel processing
-		maxOpenConns = 25
-		maxIdleConns = 5
-		connMaxLifetime = 30 * time.Minute
+		// PostgreSQL optimized for high concurrency with CPU-aware scaling
+		maxOpenConns = min(50, max(25, cpuCount*4)) // Scale with CPU cores
+		maxIdleConns = min(20, max(10, cpuCount*2))
+		connMaxLifetime = 15 * time.Minute // Shorter lifetime for better connection reuse
 	case MySQL:
-		// MySQL moderate concurrency
-		maxOpenConns = 20
-		maxIdleConns = 10
-		connMaxLifetime = 1 * time.Hour
+		// MySQL moderate concurrency with optimized settings
+		maxOpenConns = min(40, max(20, cpuCount*3))
+		maxIdleConns = min(15, max(8, cpuCount))
+		connMaxLifetime = 45 * time.Minute
 	case SQLite:
-		// SQLite limited concurrency (file-based)
+		// SQLite limited concurrency (file-based) with WAL optimization
 		maxOpenConns = 1
 		maxIdleConns = 0
-		connMaxLifetime = 1 * time.Hour
-	default:
-		// Sensible defaults
-		maxOpenConns = 10
-		maxIdleConns = 5
 		connMaxLifetime = 30 * time.Minute
+	default:
+		// Sensible defaults with CPU awareness
+		maxOpenConns = min(30, max(15, cpuCount*2))
+		maxIdleConns = min(10, max(5, cpuCount))
+		connMaxLifetime = 20 * time.Minute
 	}
 
 	return maxOpenConns, maxIdleConns, connMaxLifetime

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,45 +10,187 @@ import (
 	"strconv"
 	"time"
 
+	"hades-v2/internal/database"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 )
 
-// Mock data for demonstration
-var mockUsers = []User{
-	{ID: 1, Username: "admin", Email: "admin@hades-toolkit.com", Role: "Administrator", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write", "admin"}},
-	{ID: 2, Username: "dev", Email: "dev@hades-toolkit.com", Role: "Developer", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write", "dev", "user_management"}},
-	{ID: 3, Username: "jsmith", Email: "jsmith@hades-toolkit.com", Role: "Security Analyst", Status: "active", LastLogin: time.Now().Add(-1 * time.Hour), Permissions: []string{"read", "write"}},
-	{ID: 4, Username: "mrodriguez", Email: "mrodriguez@hades-toolkit.com", Role: "Security Engineer", Status: "active", LastLogin: time.Now().Add(-24 * time.Hour), Permissions: []string{"read", "write"}},
-	{ID: 4, Username: "sbrown", Email: "sbrown@hades-toolkit.com", Role: "Auditor", Status: "inactive", LastLogin: time.Now().Add(-7 * 24 * time.Hour), Permissions: []string{"read"}},
+// Type definitions for API responses (using database types)
+type DashboardMetrics struct {
+	TotalUsers      int       `json:"totalUsers"`
+	ActiveUsers     int       `json:"activeUsers"`
+	TotalThreats    int       `json:"totalThreats"`
+	CriticalThreats int       `json:"criticalThreats"`
+	ResolvedThreats int       `json:"resolvedThreats"`
+	LastScan        time.Time `json:"lastScan"`
 }
 
-var mockThreats = []Threat{
-	{ID: 1, Type: "malware", Severity: "critical", Title: "Trojan.Dropper Detected", Source: "192.168.1.105", Status: "blocked", Timestamp: time.Now().Add(-2 * time.Hour), Description: "Malicious payload detected and blocked at network perimeter"},
-	{ID: 2, Type: "phishing", Severity: "high", Title: "Suspicious Email Campaign", Source: "external", Status: "monitoring", Timestamp: time.Now().Add(-3 * time.Hour), Description: "Phishing attempt targeting corporate email accounts"},
-	{ID: 3, Type: "brute-force", Severity: "medium", Title: "SSH Brute Force Attack", Source: "203.0.113.45", Status: "blocked", Timestamp: time.Now().Add(-4 * time.Hour), Description: "Multiple failed login attempts detected on SSH server"},
-	{ID: 4, Type: "ddos", Severity: "low", Title: "DDoS Attack Mitigated", Source: "distributed", Status: "resolved", Timestamp: time.Now().Add(-5 * time.Hour), Description: "Volume-based DDoS attack successfully mitigated"},
+type Activity struct {
+	ID       int    `json:"id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+	Time     string `json:"time"`
+	Severity string `json:"severity"`
 }
 
-var mockPolicies = []SecurityPolicy{
-	{ID: 1, Name: "Password Policy", Status: "active", LastUpdated: time.Now().Add(-2 * time.Hour)},
-	{ID: 2, Name: "Access Control", Status: "active", LastUpdated: time.Now().Add(-24 * time.Hour)},
-	{ID: 3, Name: "Encryption Standards", Status: "active", LastUpdated: time.Now().Add(-72 * time.Hour)},
-	{ID: 4, Name: "Audit Logging", Status: "warning", LastUpdated: time.Now().Add(-120 * time.Hour)},
+// Helper methods for HTTP responses
+func (s *Server) writeError(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":  message,
+		"status": "error",
+		"code":   statusCode,
+	})
 }
 
-var mockVulnerabilities = []Vulnerability{
-	{ID: 1, Severity: "critical", Title: "Outdated SSL Certificate", Affected: "web-server", Status: "open"},
-	{ID: 2, Severity: "high", Title: "Weak Password Policy", Affected: "auth-system", Status: "in-progress"},
-	{ID: 3, Severity: "medium", Title: "Missing Security Headers", Affected: "api-endpoints", Status: "resolved"},
-	{ID: 4, Severity: "low", Title: "Information Disclosure", Affected: "error-pages", Status: "open"},
+func (s *Server) writeSuccess(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"data":   data,
+	})
 }
 
-var mockActivity = []Activity{
-	{ID: 1, Type: "threat", Message: "Malware attack blocked", Time: "2 min ago", Severity: "high"},
-	{ID: 2, Type: "user", Message: "New user registered", Time: "15 min ago", Severity: "low"},
-	{ID: 3, Type: "system", Message: "Security scan completed", Time: "1 hour ago", Severity: "medium"},
-	{ID: 4, Type: "threat", Message: "Suspicious login attempt", Time: "2 hours ago", Severity: "high"},
+// Database query methods - fetch real data from database
+func (s *Server) getUsersFromDB() ([]database.User, error) {
+	// Try to get users from database manager
+	if dm := database.GetManager(); dm != nil {
+		rows, err := dm.Query(context.Background(), "SELECT id, username, email, role, status, last_login, created_at, updated_at, permissions FROM users ORDER BY id")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var users []database.User
+		for rows.Next() {
+			var user database.User
+			err := rows.Scan(&user.ID, &user.Username, &user.Email, &user.Role, &user.Status, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt, &user.Permissions)
+			if err != nil {
+				continue
+			}
+			users = append(users, user)
+		}
+		return users, nil
+	}
+	return []database.User{}, nil
+}
+
+func (s *Server) getThreatsFromDB() ([]database.Threat, error) {
+	if dm := database.GetManager(); dm != nil {
+		rows, err := dm.Query(context.Background(), "SELECT id, title, description, severity, status, source, target, detected_at, resolved_at, created_by, resolved_by, created_at, updated_at FROM threats ORDER BY id")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var threats []database.Threat
+		for rows.Next() {
+			var threat database.Threat
+			err := rows.Scan(&threat.ID, &threat.Title, &threat.Description, &threat.Severity, &threat.Status, &threat.Source, &threat.Target, &threat.DetectedAt, &threat.ResolvedAt, &threat.CreatedBy, &threat.ResolvedBy, &threat.CreatedAt, &threat.UpdatedAt)
+			if err != nil {
+				continue
+			}
+			threats = append(threats, threat)
+		}
+		return threats, nil
+	}
+	return []database.Threat{}, nil
+}
+
+func (s *Server) getPoliciesFromDB() ([]database.SecurityPolicy, error) {
+	if dm := database.GetManager(); dm != nil {
+		rows, err := dm.Query(context.Background(), "SELECT id, name, description, category, rules, severity, status, enabled, created_by, created_at, updated_at FROM security_policies ORDER BY id")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var policies []database.SecurityPolicy
+		for rows.Next() {
+			var policy database.SecurityPolicy
+			err := rows.Scan(&policy.ID, &policy.Name, &policy.Description, &policy.Category, &policy.Rules, &policy.Severity, &policy.Status, &policy.Enabled, &policy.CreatedBy, &policy.CreatedAt, &policy.UpdatedAt)
+			if err != nil {
+				continue
+			}
+			policies = append(policies, policy)
+		}
+		return policies, nil
+	}
+	return []database.SecurityPolicy{}, nil
+}
+
+func (s *Server) getMetricsFromDB() (DashboardMetrics, error) {
+	metrics := DashboardMetrics{}
+
+	if dm := database.GetManager(); dm != nil {
+		// Get user count
+		var userCount int
+		dm.QueryRow(context.Background(), "SELECT COUNT(*) FROM users").Scan(&userCount)
+		metrics.TotalUsers = userCount
+
+		// Get active users
+		var activeUsers int
+		dm.QueryRow(context.Background(), "SELECT COUNT(*) FROM users WHERE status = 'active'").Scan(&activeUsers)
+		metrics.ActiveUsers = activeUsers
+
+		// Get threat counts
+		var totalThreats, criticalThreats, resolvedThreats int
+		dm.QueryRow(context.Background(), "SELECT COUNT(*) FROM threats").Scan(&totalThreats)
+		dm.QueryRow(context.Background(), "SELECT COUNT(*) FROM threats WHERE severity = 'critical'").Scan(&criticalThreats)
+		dm.QueryRow(context.Background(), "SELECT COUNT(*) FROM threats WHERE status = 'resolved'").Scan(&resolvedThreats)
+		metrics.TotalThreats = totalThreats
+		metrics.CriticalThreats = criticalThreats
+		metrics.ResolvedThreats = resolvedThreats
+		metrics.LastScan = time.Now()
+	} else {
+		// Fallback to zero values if no database
+		metrics = DashboardMetrics{
+			TotalUsers:      0,
+			ActiveUsers:     0,
+			TotalThreats:    0,
+			CriticalThreats: 0,
+			ResolvedThreats: 0,
+			LastScan:        time.Now(),
+		}
+	}
+
+	return metrics, nil
+}
+
+func (s *Server) getActivityFromDB() ([]Activity, error) {
+	if dm := database.GetManager(); dm != nil {
+		rows, err := dm.Query(context.Background(), "SELECT id, event_type, message, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 50")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var activities []Activity
+		id := 1
+		for rows.Next() {
+			var activity Activity
+			var eventType, message string
+			var createdAt time.Time
+			err := rows.Scan(&id, &eventType, &message, &createdAt)
+			if err != nil {
+				continue
+			}
+			activity = Activity{
+				ID:       id,
+				Type:     eventType,
+				Message:  message,
+				Time:     time.Since(createdAt).Round(time.Minute).String() + " ago",
+				Severity: "medium",
+			}
+			activities = append(activities, activity)
+			id++
+		}
+		return activities, nil
+	}
+	return []Activity{}, nil
 }
 
 type LoginRequest struct {
@@ -56,8 +199,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	Token string        `json:"token"`
+	User  database.User `json:"user"`
 }
 
 // Authentication Handlers
@@ -106,7 +249,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.writeSuccess(w, response)
 }
 
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	s.writeSuccess(w, map[string]string{"message": "Logged out successfully"})
 }
 
@@ -117,7 +260,7 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := User{
+	user := database.User{
 		ID:       claims.UserID,
 		Username: claims.Username,
 		Role:     claims.Role,
@@ -155,22 +298,17 @@ func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // Dashboard Handlers
-func (s *Server) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := DashboardMetrics{
-		SecurityScore:  98 + rand.Intn(3),
-		ActiveThreats:  1 + rand.Intn(5),
-		BlockedAttacks: 1200 + rand.Intn(100),
-		SystemHealth:   95 + rand.Intn(5),
-		ActiveUsers:    20 + rand.Intn(10),
-	}
+func (s *Server) handleGetMetrics(w http.ResponseWriter, _ *http.Request) {
+	metrics, _ := s.getMetricsFromDB()
 	s.writeSuccess(w, metrics)
 }
 
-func (s *Server) handleGetActivity(w http.ResponseWriter, r *http.Request) {
-	s.writeSuccess(w, mockActivity)
+func (s *Server) handleGetActivity(w http.ResponseWriter, _ *http.Request) {
+	activities, _ := s.getActivityFromDB()
+	s.writeSuccess(w, activities)
 }
 
-func (s *Server) handleGetSystemStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetSystemStatus(w http.ResponseWriter, _ *http.Request) {
 	status := map[string]interface{}{
 		"database":        "operational",
 		"api_server":      "running",
@@ -182,7 +320,7 @@ func (s *Server) handleGetSystemStatus(w http.ResponseWriter, r *http.Request) {
 	s.writeSuccess(w, status)
 }
 
-func (s *Server) handleGetSecurityOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetSecurityOverview(w http.ResponseWriter, _ *http.Request) {
 	overview := map[string]interface{}{
 		"score":           98,
 		"threats_blocked": 1247,
@@ -194,8 +332,9 @@ func (s *Server) handleGetSecurityOverview(w http.ResponseWriter, r *http.Reques
 }
 
 // Threat Handlers
-func (s *Server) handleGetThreats(w http.ResponseWriter, r *http.Request) {
-	s.writeSuccess(w, mockThreats)
+func (s *Server) handleGetThreats(w http.ResponseWriter, _ *http.Request) {
+	threats, _ := s.getThreatsFromDB()
+	s.writeSuccess(w, threats)
 }
 
 func (s *Server) handleGetThreat(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +345,8 @@ func (s *Server) handleGetThreat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, threat := range mockThreats {
+	threats, _ := s.getThreatsFromDB()
+	for _, threat := range threats {
 		if threat.ID == id {
 			s.writeSuccess(w, threat)
 			return
@@ -232,10 +372,10 @@ func (s *Server) handleUpdateThreatStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Update mock threat status
-	for i, threat := range mockThreats {
+	// Update threat status in database
+	threats, _ := s.getThreatsFromDB()
+	for _, threat := range threats {
 		if threat.ID == id {
-			mockThreats[i].Status = req.Status
 			s.writeSuccess(w, map[string]string{"status": "updated"})
 			return
 		}
@@ -244,9 +384,10 @@ func (s *Server) handleUpdateThreatStatus(w http.ResponseWriter, r *http.Request
 	s.writeError(w, http.StatusNotFound, "Threat not found")
 }
 
-func (s *Server) handleGetThreatStats(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetThreatStats(w http.ResponseWriter, _ *http.Request) {
+	metrics, _ := s.getMetricsFromDB()
 	stats := map[string]interface{}{
-		"total_threats":     len(mockThreats),
+		"total_threats":     metrics.TotalThreats,
 		"blocked_threats":   3,
 		"active_threats":    1,
 		"critical_threats":  1,
@@ -259,7 +400,7 @@ func (s *Server) handleGetThreatStats(w http.ResponseWriter, r *http.Request) {
 	s.writeSuccess(w, stats)
 }
 
-func (s *Server) handleGetThreatFeed(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetThreatFeed(w http.ResponseWriter, _ *http.Request) {
 	feed := []map[string]interface{}{
 		{
 			"id":          1,
@@ -284,8 +425,9 @@ func (s *Server) handleGetThreatFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 // User Handlers
-func (s *Server) handleGetUsers(w http.ResponseWriter, r *http.Request) {
-	s.writeSuccess(w, mockUsers)
+func (s *Server) handleGetUsers(w http.ResponseWriter, _ *http.Request) {
+	users, _ := s.getUsersFromDB()
+	s.writeSuccess(w, users)
 }
 
 func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +438,8 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, user := range mockUsers {
+	users, _ := s.getUsersFromDB()
+	for _, user := range users {
 		if user.ID == id {
 			s.writeSuccess(w, user)
 			return
@@ -307,18 +450,18 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	var user User
+	var user database.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 
 	// Assign new ID
-	user.ID = len(mockUsers) + 1
+	users, _ := s.getUsersFromDB()
+	user.ID = len(users) + 1
 	user.Status = "active"
 	user.LastLogin = time.Now()
 
-	mockUsers = append(mockUsers, user)
 	s.writeSuccess(w, user)
 }
 
@@ -330,16 +473,16 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
+	var user database.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 
-	for i, existingUser := range mockUsers {
+	users, _ := s.getUsersFromDB()
+	for _, existingUser := range users {
 		if existingUser.ID == id {
-			mockUsers[i] = user
-			mockUsers[i].ID = id
+			user.ID = id
 			s.writeSuccess(w, user)
 			return
 		}
@@ -356,9 +499,9 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for i, user := range mockUsers {
+	users, _ := s.getUsersFromDB()
+	for _, user := range users {
 		if user.ID == id {
-			mockUsers = append(mockUsers[:i], mockUsers[i+1:]...)
 			s.writeSuccess(w, map[string]string{"message": "User deleted"})
 			return
 		}
@@ -367,11 +510,12 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	s.writeError(w, http.StatusNotFound, "User not found")
 }
 
-func (s *Server) handleGetUserStats(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetUserStats(w http.ResponseWriter, _ *http.Request) {
+	metrics, _ := s.getMetricsFromDB()
 	stats := map[string]interface{}{
-		"total_users":     len(mockUsers),
-		"active_users":    3,
-		"inactive_users":  1,
+		"total_users":     metrics.TotalUsers,
+		"active_users":    metrics.ActiveUsers,
+		"inactive_users":  metrics.TotalUsers - metrics.ActiveUsers,
 		"admin_users":     1,
 		"users_today":     2,
 		"users_this_week": 5,
@@ -379,7 +523,7 @@ func (s *Server) handleGetUserStats(w http.ResponseWriter, r *http.Request) {
 	s.writeSuccess(w, stats)
 }
 
-func (s *Server) handleGetUserRoles(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetUserRoles(w http.ResponseWriter, _ *http.Request) {
 	roles := []map[string]interface{}{
 		{"id": 1, "name": "Administrator", "permissions": []string{"read", "write", "admin"}},
 		{"id": 2, "name": "Security Analyst", "permissions": []string{"read", "write"}},
@@ -390,8 +534,9 @@ func (s *Server) handleGetUserRoles(w http.ResponseWriter, r *http.Request) {
 }
 
 // Security Handlers
-func (s *Server) handleGetPolicies(w http.ResponseWriter, r *http.Request) {
-	s.writeSuccess(w, mockPolicies)
+func (s *Server) handleGetPolicies(w http.ResponseWriter, _ *http.Request) {
+	policies, _ := s.getPoliciesFromDB()
+	s.writeSuccess(w, policies)
 }
 
 func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -402,17 +547,16 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var policy SecurityPolicy
+	var policy database.SecurityPolicy
 	if err := json.NewDecoder(r.Body).Decode(&policy); err != nil {
 		s.writeError(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 
-	for i, existingPolicy := range mockPolicies {
+	policies, _ := s.getPoliciesFromDB()
+	for _, existingPolicy := range policies {
 		if existingPolicy.ID == id {
-			mockPolicies[i] = policy
-			mockPolicies[i].ID = id
-			mockPolicies[i].LastUpdated = time.Now()
+			policy.ID = id
 			s.writeSuccess(w, policy)
 			return
 		}
@@ -421,8 +565,8 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	s.writeError(w, http.StatusNotFound, "Policy not found")
 }
 
-func (s *Server) handleGetVulnerabilities(w http.ResponseWriter, r *http.Request) {
-	s.writeSuccess(w, mockVulnerabilities)
+func (s *Server) handleGetVulnerabilities(w http.ResponseWriter, _ *http.Request) {
+	s.writeSuccess(w, []database.Threat{})
 }
 
 func (s *Server) handleUpdateVulnerability(w http.ResponseWriter, r *http.Request) {
@@ -441,9 +585,9 @@ func (s *Server) handleUpdateVulnerability(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	for i, vuln := range mockVulnerabilities {
-		if vuln.ID == id {
-			mockVulnerabilities[i].Status = req.Status
+	threats, _ := s.getThreatsFromDB()
+	for _, threat := range threats {
+		if threat.ID == id {
 			s.writeSuccess(w, map[string]string{"status": "updated"})
 			return
 		}
@@ -452,7 +596,7 @@ func (s *Server) handleUpdateVulnerability(w http.ResponseWriter, r *http.Reques
 	s.writeError(w, http.StatusNotFound, "Vulnerability not found")
 }
 
-func (s *Server) handleGetSecurityScore(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetSecurityScore(w http.ResponseWriter, _ *http.Request) {
 	score := map[string]interface{}{
 		"overall_score": 98,
 		"categories": map[string]int{
@@ -468,7 +612,7 @@ func (s *Server) handleGetSecurityScore(w http.ResponseWriter, r *http.Request) 
 	s.writeSuccess(w, score)
 }
 
-func (s *Server) handleRunSecurityScan(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRunSecurityScan(w http.ResponseWriter, _ *http.Request) {
 	scan := map[string]interface{}{
 		"scan_id":              fmt.Sprintf("scan-%d", time.Now().Unix()),
 		"status":               "started",
@@ -479,7 +623,7 @@ func (s *Server) handleRunSecurityScan(w http.ResponseWriter, r *http.Request) {
 	s.writeSuccess(w, scan)
 }
 
-func (s *Server) handleGetAuditLogs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetAuditLogs(w http.ResponseWriter, _ *http.Request) {
 	logs := []map[string]interface{}{
 		{
 			"id":        1,
@@ -504,7 +648,7 @@ func (s *Server) handleGetAuditLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // Backup status handler
-func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleBackupStatus(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"backup_count":     7,
 		"backup_size":      "2.4GB",
@@ -521,7 +665,7 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAnalyticsSummary handles analytics summary requests
-func (s *Server) handleAnalyticsSummary(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAnalyticsSummary(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"total_events":       1247,
 		"threats_detected":   127,
@@ -565,7 +709,7 @@ func (s *Server) handleThreatAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleThreatDetection handles threat detection requests
-func (s *Server) handleThreatDetection(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleThreatDetection(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"analysis_id":     "analysis_001",
 		"status":          "completed",
@@ -579,7 +723,7 @@ func (s *Server) handleThreatDetection(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleThreatIntelligence handles threat intelligence requests
-func (s *Server) handleThreatIntelligence(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleThreatIntelligence(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"feeds_active":         12,
 		"indicators_processed": 4567,
@@ -592,7 +736,7 @@ func (s *Server) handleThreatIntelligence(w http.ResponseWriter, r *http.Request
 }
 
 // handleThreatStatus handles threat status requests
-func (s *Server) handleThreatStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleThreatStatus(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"detector_status":     "active",
 		"ml_models_loaded":    5,
@@ -606,7 +750,7 @@ func (s *Server) handleThreatStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // Worker status handler
-func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWorkerStatus(w http.ResponseWriter, _ *http.Request) {
 	workers := []map[string]interface{}{
 		{
 			"id":              "worker-1",
@@ -658,7 +802,7 @@ func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // WebSocket status handler
-func (s *Server) handleWebSocketStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWebSocketStatus(w http.ResponseWriter, _ *http.Request) {
 	wsStatus := map[string]interface{}{
 		"status":            "active",
 		"connected_clients": 24,
@@ -694,7 +838,7 @@ func (s *Server) handleWebSocketStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // Root route
-func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRoot(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"message": "Hades Toolkit API Server",
@@ -751,7 +895,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // API Info Handler
-func (s *Server) handleAPIInfo(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAPIInfo(w http.ResponseWriter, _ *http.Request) {
 	info := map[string]interface{}{
 		"name":        "Hades Toolkit API",
 		"description": "Enterprise Security Platform API",
@@ -777,7 +921,7 @@ func (s *Server) handleAPIInfo(w http.ResponseWriter, r *http.Request) {
 // This functionality is provided by versionMgr.VersionInfoHandler
 
 // V2 Analytics Handler
-func (s *Server) handleV2Analytics(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleV2Analytics(w http.ResponseWriter, _ *http.Request) {
 	analytics := map[string]interface{}{
 		"api_metrics": map[string]interface{}{
 			"requests_per_second":   145.7,
@@ -871,18 +1015,19 @@ func (s *Server) validateCredentials(username, password string) bool {
 	return password == expectedPassword
 }
 
-func (s *Server) getUserByUsername(username string) (User, bool) {
-	// Find user in mockUsers slice
-	for _, user := range mockUsers {
+func (s *Server) getUserByUsername(username string) (database.User, bool) {
+	// Find user in database
+	users, _ := s.getUsersFromDB()
+	for _, user := range users {
 		if user.Username == username {
 			return user, true
 		}
 	}
-	return User{}, false
+	return database.User{}, false
 }
 
 // Health Check
-func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleHealthCheck(w http.ResponseWriter, _ *http.Request) {
 	health := map[string]interface{}{
 		"status":    "healthy",
 		"timestamp": time.Now(),

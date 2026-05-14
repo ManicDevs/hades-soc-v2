@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -100,6 +101,8 @@ type AIThreatEngine struct {
 	}
 	TrafficAnalyzer    *TrafficPatternAnalyzer // Internal lateral movement detection
 	SanitizationLayer  *SanitizationLayer      // Adversarial AI defense
+	LLMService         *LLMService             // LLM integration for enhanced analysis
+	llmEnabled         bool
 	mu                 sync.RWMutex
 	eventBus           *bus.EventBus
 	cascadeSubs        []*bus.Subscription
@@ -973,6 +976,250 @@ func (ate *AIThreatEngine) IntegrateWithZeroTrust(zte *zerotrust.ZeroTrustEngine
 	ate.autoIsolate = enableAutoIsolate
 
 	log.Printf("AIThreatEngine: Integrated with ZeroTrust (autoIsolate=%v)", enableAutoIsolate)
+}
+
+// IntegrateWithLLM links the threat engine to LLM service for enhanced analysis
+func (ate *AIThreatEngine) IntegrateWithLLM(llm *LLMService, enable bool) {
+	ate.mu.Lock()
+	defer ate.mu.Unlock()
+
+	ate.LLMService = llm
+	ate.llmEnabled = enable
+
+	log.Printf("AIThreatEngine: Integrated with LLM (enabled=%v)", enable)
+}
+
+// AnalyzeThreatWithLLM performs threat analysis enhanced with LLM
+func (ate *AIThreatEngine) AnalyzeThreatWithLLM(ctx context.Context, event SecurityEvent) (*ThreatAssessment, error) {
+	ate.mu.RLock()
+	llmEnabled := ate.llmEnabled
+	ate.mu.RUnlock()
+
+	// First do standard analysis
+	assessment, err := ate.AnalyzeThreat(ctx, event)
+	if err != nil {
+		return nil, err
+	}
+
+	if !llmEnabled || ate.LLMService == nil {
+		return assessment, nil
+	}
+
+	// Enrich with LLM analysis
+	enriched, err := ate.enrichWithLLM(event, assessment)
+	if err != nil {
+		log.Printf("LLM enrichment failed: %v", err)
+		return assessment, nil
+	}
+
+	return enriched, nil
+}
+
+// enrichWithLLM uses LLM to provide enhanced threat analysis
+func (ate *AIThreatEngine) enrichWithLLM(event SecurityEvent, assessment *ThreatAssessment) (*ThreatAssessment, error) {
+	// Build context for LLM
+	featuresJSON, _ := json.Marshal(event.Features)
+	metadataJSON, _ := json.Marshal(event.Metadata)
+
+	prompt := fmt.Sprintf(`Analyze this security event and provide enhanced threat intelligence:
+
+Event ID: %s
+Type: %s
+Severity: %s
+Source: %s
+Target: %s
+Signature: %s
+Features: %s
+Metadata: %s
+
+Current Assessment:
+- Threat Score: %.2f
+- Risk Level: %s
+- ML Score: %.2f
+- Anomaly Score: %.2f
+- Pattern Score: %.2f
+
+Provide JSON response:
+{
+  "enhanced_predictions": ["additional predictions from LLM"],
+  "attack_chain": "describe the likely attack chain if critical",
+  "ttps": ["list of MITRE ATT&CK techniques if identified"],
+  "context_enrichment": "additional context about this threat",
+  "confidence_boost": 0.0-0.2 adjustment based on LLM confidence
+}`, event.ID, event.Type, event.Severity, event.Source, event.Target,
+		event.Signature, string(featuresJSON), string(metadataJSON),
+		assessment.ThreatScore, assessment.RiskLevel, assessment.MLScore,
+		assessment.AnomalyScore, assessment.PatternScore)
+
+	resp, err := ate.LLMService.Query(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse LLM response
+	var llmResult struct {
+		EnhancedPredictions []string `json:"enhanced_predictions"`
+		AttackChain         string   `json:"attack_chain"`
+		TTPs                []string `json:"ttps"`
+		ContextEnrichment   string   `json:"context_enrichment"`
+		ConfidenceBoost     float64  `json:"confidence_boost"`
+	}
+
+	if err := json.Unmarshal([]byte(resp.Response), &llmResult); err != nil {
+		log.Printf("Failed to parse LLM response: %v", err)
+		return assessment, nil
+	}
+
+	// Merge LLM predictions
+	if len(llmResult.EnhancedPredictions) > 0 {
+		assessment.Predictions = append(assessment.Predictions, llmResult.EnhancedPredictions...)
+	}
+
+	// Add TTPs as pattern matches
+	for _, ttp := range llmResult.TTPs {
+		assessment.Patterns = append(assessment.Patterns, Pattern{
+			Name:       "MITRE ATT&CK: " + ttp,
+			Match:      true,
+			Confidence: 0.85,
+			Severity:   assessment.RiskLevel,
+		})
+	}
+
+	// Adjust confidence
+	if llmResult.ConfidenceBoost != 0 {
+		assessment.Confidence = math.Min(1.0, assessment.Confidence+llmResult.ConfidenceBoost)
+	}
+
+	// Add context enrichment to recommendations
+	if llmResult.ContextEnrichment != "" {
+		assessment.Recommendations = append(assessment.Recommendations,
+			"LLM Context: "+llmResult.ContextEnrichment)
+	}
+
+	if llmResult.AttackChain != "" {
+		assessment.Recommendations = append(assessment.Recommendations,
+			"Attack Chain: "+llmResult.AttackChain)
+	}
+
+	return assessment, nil
+}
+
+// GenerateLLMPredictions uses LLM to predict attack patterns
+func (ate *AIThreatEngine) GenerateLLMPredictions(eventHistory string) ([]map[string]interface{}, error) {
+	ate.mu.RLock()
+	llmEnabled := ate.llmEnabled
+	llm := ate.LLMService
+	ate.mu.RUnlock()
+
+	if !llmEnabled || llm == nil {
+		return nil, fmt.Errorf("LLM not enabled")
+	}
+
+	prompt := fmt.Sprintf(`Based on this event history, predict likely future attack patterns:
+
+%s
+
+Provide JSON array of predictions:
+[{
+  "type": "attack_type",
+  "likelihood": "high/medium/low",
+  "timeframe": "hours/days/weeks",
+  "description": "description"
+}]`, eventHistory)
+
+	resp, err := llm.Query(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	var predictions []map[string]interface{}
+	if err := json.Unmarshal([]byte(resp.Response), &predictions); err != nil {
+		return nil, err
+	}
+
+	return predictions, nil
+}
+
+// AnalyzeThreatTrend uses LLM to analyze threat trends over time
+func (ate *AIThreatEngine) AnalyzeThreatTrend(trends []SecurityEvent) (string, error) {
+	ate.mu.RLock()
+	llmEnabled := ate.llmEnabled
+	llm := ate.LLMService
+	ate.mu.RUnlock()
+
+	if !llmEnabled || llm == nil {
+		return "", fmt.Errorf("LLM not enabled")
+	}
+
+	eventsJSON, _ := json.Marshal(trends)
+
+	prompt := fmt.Sprintf(`Analyze these threat events and identify trends:
+
+%s
+
+Provide a brief trend analysis including:
+- Emerging attack patterns
+- Shift in attacker tactics
+- Recommended defensive adjustments`, string(eventsJSON))
+
+	resp, err := llm.Query(prompt)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Response, nil
+}
+
+// EnrichLogWithLLM adds LLM-based analysis to raw log entries
+func (ate *AIThreatEngine) EnrichLogWithLLM(logEntry string) (*SanitizationResult, error) {
+	prompt := fmt.Sprintf(`Analyze this log entry for security threats:
+
+%s
+
+Provide JSON:
+{
+  "threat_detected": true/false,
+  "threat_type": "type if detected",
+  "severity": "low/medium/high/critical",
+  "recommended_action": "what to do",
+  "enrichment": "additional IOCs or context"
+}`, logEntry)
+
+	resp, err := ate.LLMService.Query(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		ThreatDetected    bool   `json:"threat_detected"`
+		ThreatType        string `json:"threat_type"`
+		Severity          string `json:"severity"`
+		RecommendedAction string `json:"recommended_action"`
+		Enrichment        string `json:"enrichment"`
+	}
+
+	if err := json.Unmarshal([]byte(resp.Response), &result); err != nil {
+		return &SanitizationResult{
+			IsSafe:     true,
+			Confidence: 0.5,
+			Reasoning:  resp.Response,
+		}, nil
+	}
+
+	if result.ThreatDetected {
+		return &SanitizationResult{
+			IsSafe:     false,
+			Confidence: 0.9,
+			ThreatType: result.ThreatType,
+			Reasoning:  result.RecommendedAction,
+		}, nil
+	}
+
+	return &SanitizationResult{
+		IsSafe:     true,
+		Confidence: 0.95,
+		Reasoning:  result.Enrichment,
+	}, nil
 }
 
 // IntegrateWithQuantum links the threat engine to quantum cryptography for session key upgrades

@@ -1,0 +1,148 @@
+What is the current time and date?
+Explain quantum computing in one sentence
+Write a haiku about programming
+What are the main benefits of using Go programming language?
+Explain machine learning in simple terms
+Write a joke about computers
+What is the meaning of life according to philosophy?
+Explain blockchain technology briefly
+Write a short story about artificial intelligence
+What makes good software architecture?
+Explain the concept of recursion
+Write a poem about technology and its future
+What is cloud computing and how does it work?
+Explain API design principles
+Write about the future of artificial intelligence
+What is cybersecurity and why is it important?
+Explain database normalization simply
+Write about the importance of software testing
+What is DevOps and how does it help teams?
+Explain microservices architecture
+What is the difference between frontend and backend development?
+Write about the importance of user experience design
+Explain the concept of continuous integration
+What is agile software development?
+Write about the role of data science in business
+Explain the Internet of Things (IoT)
+What is virtual reality and how does it work?
+Write about the future of renewable energy
+Explain the concept of big data
+What is artificial general intelligence (AGI)?
+Write about the importance of digital privacy
+Explain the concept of edge computing
+What is the metaverse and how will it change things?
+Write about sustainable technology practices
+Explain the basics of cryptocurrency
+What is quantum supremacy?
+Write about the impact of social media on society
+Explain the concept of neural networks
+What is the future of space exploration?
+Write about the importance of critical thinking
+Explain the concept of blockchain consensus
+What is biometric authentication?
+Write about the ethics of artificial intelligence
+Explain the concept of digital twins
+What is the future of work in the age of AI?
+Write about the importance of cybersecurity awareness
+Explain the concept of fog computing
+What is quantum entanglement?
+Write about the impact of automation on jobs
+Explain the concept of smart contracts
+What is the future of education technology?
+Write about the importance of data privacy
+Explain the concept of decentralized finance
+What is quantum cryptography?
+Write about the impact of 5G technology
+Explain the concept of digital transformation
+What is the future of healthcare technology?
+Write about the importance of sustainable computing
+Explain the concept of edge AI
+What is quantum machine learning?
+Write about the impact of robotics on manufacturing
+Explain the concept of digital sovereignty
+What is the future of transportation technology?
+Write about the importance of ethical AI development
+Explain the concept of federated learning
+What is quantum internet?
+Write about the impact of renewable energy on society
+Explain the concept of green computing
+What is the future of quantum computing?
+Write about the importance of digital literacy
+Explain the concept of swarm intelligence
+What is neuromorphic computing?
+Write about the impact of AI on creative industries
+Explain the concept of explainable AI
+What is the future of human-computer interaction?
+Write about the importance of algorithmic transparency
+Explain the concept of digital twins in manufacturing
+What is quantum sensing technology?
+Write about the impact of AI on scientific research
+Explain the concept of cognitive computing
+What is the future of augmented reality?
+Write about the importance of data governance
+Explain the concept of bioinformatics
+What is quantum error correction?
+Write about the impact of AI on healthcare
+Explain the concept of computational creativity
+What is the future of quantum communication?
+Write about the importance of ethical technology design
+Explain the concept of synthetic biology
+What is quantum simulation?
+Write about the impact of AI on education
+Explain the concept of digital ethics
+What is the future of nanotechnology?
+Write about the importance of technological sustainability
+Explain the concept of brain-computer interfaces
+What is quantum metrology?
+Write about the impact of AI on climate change solutions
+Explain the concept of ambient computing
+What is the future of biometric technology?
+Write about the importance of inclusive design in technology
+Explain the concept of molecular computing
+What is quantum sensing?
+Write about the impact of AI on financial services
+Explain the concept of digital twins in healthcare
+What is the future of quantum materials?
+Write about the importance of responsible AI development
+Explain the concept of photonic computing
+What is quantum annealing?
+Write about the impact of AI on agriculture
+Explain the concept of cognitive robotics
+What is the future of quantum sensors?
+Write about the importance of technology accessibility
+Explain the concept of DNA computing
+What is quantum control?
+Write about the impact of AI on environmental monitoring
+Explain the concept of neuromorphic engineering
+What is the future of quantum networks?
+Write about the importance of data ethics in AI
+Explain the concept of spintronics
+What is quantum information theory?
+Write about the impact of AI on social good initiatives
+Explain the concept of topological quantum computing
+What is the future of quantum cryptography?
+Write about the importance of interdisciplinary technology research
+Explain the concept of quantum machine learning algorithms
+What is quantum error mitigation?
+Write about the impact of AI on disaster response
+Explain the concept of quantum-inspired classical computing
+What is the future of quantum hardware?
+Write about the importance of technology policy and regulation
+Explain the concept of quantum optimization
+What is quantum simulation for drug discovery?
+Write about the impact of AI on sustainable development goals
+Explain the concept of quantum artificial intelligence
+What is the future of quantum software?
+Write about the importance of technology education and literacy
+Explain the concept of quantum cloud computing
+What is quantum networking infrastructure?
+Write about the impact of AI on global challenges
+Explain the concept of quantum cybersecurity
+What is the future of quantum applications?
+Write about the importance of international technology collaboration
+Explain the concept of quantum-enhanced machine learning
+What is quantum computing for optimization problems?
+Write about the impact of AI on human creativity and innovation
+Explain the concept of quantum algorithms for real-world problems
+What is the future of quantum technology integration?
+Write about the importance of ethical considerations in advanced technology

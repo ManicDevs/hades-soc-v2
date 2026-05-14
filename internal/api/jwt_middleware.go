@@ -107,7 +107,7 @@ func (s *Server) JWTMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Check if token is expired
-if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
+		if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 			s.writeError(w, http.StatusUnauthorized, "Token expired")
 			return
 		}

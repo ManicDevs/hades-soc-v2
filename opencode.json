@@ -1,33 +1,5 @@
 {
-  "agent": {
-    "build": {
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true
-      }
-    },
-    "mode": "autonomous",
-    "model": "claude-sonnet-4.5",
-    "permissions": {
-      "all_ask": false
-    }
-  },
-  "workflow": {
-    "agents_path": "/home/cerberus/.config/opencode/agents",
-    "commands_path": "/home/cerberus/.config/opencode/commands",
-    "pm_agent": "pm.md",
-    "check_agent": "check.md",
-    "test_agent": "test.md",
-    "make_agent": "make.md"
-  },
-  "server": {
-    "host": "0.0.0.0",
-    "port": 4096
-  },
-  "autonomy": {
-    "max_retries": 5,
-    "continue_on_warning": true,
-    "escalate_on_max_retries": true
-  }
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-3-5-sonnet-latest",
+  "instructions": ["./workflow.md"]
 }

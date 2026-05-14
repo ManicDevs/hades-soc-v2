@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -218,6 +219,12 @@ type PaginatedResponse struct {
 	Data       interface{}            `json:"data"`
 	Pagination Pagination             `json:"pagination"`
 	Metadata   map[string]interface{} `json:"metadata"`
+}
+
+type Response struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
 }
 
 type Pagination struct {
@@ -564,5 +571,9 @@ func generateRequestID() string {
 func (s *Server) writeSuccessV2(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/vnd.hades.v2+json")
 	w.Header().Set("API-Version", "v2")
-	s.writeJSON(w, http.StatusOK, Response{Success: true, Data: data})
+
+	response := Response{Success: true, Data: data}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }

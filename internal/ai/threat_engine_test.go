@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,7 +44,8 @@ func TestAnalyzeThreat_SanitizationQuarantine(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Create mock event bus to capture published events
+			// Create mock event bus to capture published events with proper sync
+			var mu sync.Mutex
 			publishedEvents := []bus.Event{}
 
 			// Create a real event bus and capture events
@@ -51,6 +53,8 @@ func TestAnalyzeThreat_SanitizationQuarantine(t *testing.T) {
 
 			// Subscribe to SecurityUpgradeRequest events to capture them
 			mockBus.Subscribe(bus.EventTypeSecurityUpgradeRequest, func(event bus.Event) error {
+				mu.Lock()
+				defer mu.Unlock()
 				publishedEvents = append(publishedEvents, event)
 				return nil
 			})
@@ -79,25 +83,21 @@ func TestAnalyzeThreat_SanitizationQuarantine(t *testing.T) {
 			// Add small delay to allow async event processing
 			time.Sleep(10 * time.Millisecond)
 
-			// Check if SecurityUpgradeRequest was published
-			var securityUpgradePublished bool
+			// Check if SecurityUpgradeRequest was published (with lock for safe access)
+			mu.Lock()
 			for _, published := range publishedEvents {
 				if published.Type == bus.EventTypeSecurityUpgradeRequest {
-					securityUpgradePublished = true
-					break
+					mu.Unlock()
+					if !test.expected {
+						t.Error("SecurityUpgradeRequest should not be published for safe event")
+					}
+					return
 				}
 			}
+			mu.Unlock()
 
 			if test.expected {
-				// Should have SecurityUpgradeRequest for malicious event
-				if !securityUpgradePublished {
-					t.Error("Expected SecurityUpgradeRequest to be published for quarantined event")
-				}
-			} else {
-				// Should NOT have SecurityUpgradeRequest for safe event
-				if securityUpgradePublished {
-					t.Error("SecurityUpgradeRequest should not be published for safe event")
-				}
+				t.Error("Expected SecurityUpgradeRequest to be published for quarantined event")
 			}
 		})
 	}

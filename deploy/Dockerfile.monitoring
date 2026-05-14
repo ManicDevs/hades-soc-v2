@@ -21,7 +21,7 @@ ENV GIN_MODE=debug
 ENV HADES_ENV=development
 
 EXPOSE 3001
-CMD ["./hades-monitoring"]
+CMD ["./hades-monitoring", "api"]
 
 # Production builder stage
 FROM golang:1.25-alpine AS builder

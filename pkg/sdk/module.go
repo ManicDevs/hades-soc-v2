@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // ModuleStatus represents the operational state of a module
@@ -27,6 +28,7 @@ const (
 	CategoryPersistence      ModuleCategory = "persistence"
 	CategoryEvasion          ModuleCategory = "evasion"
 	CategoryReporting        ModuleCategory = "reporting"
+	CategoryAuxiliary        ModuleCategory = "auxiliary"
 )
 
 // Module defines the contract for all Hades modules
@@ -52,6 +54,7 @@ type Module interface {
 
 // BaseModule provides common functionality for all modules
 type BaseModule struct {
+	mu          sync.RWMutex
 	name        string
 	category    ModuleCategory
 	description string
@@ -70,27 +73,50 @@ func NewBaseModule(name, description string, category ModuleCategory) *BaseModul
 
 // Name returns the module's unique identifier
 func (bm *BaseModule) Name() string {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
 	return bm.name
 }
 
 // Category returns the module's functional classification
 func (bm *BaseModule) Category() ModuleCategory {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
 	return bm.category
 }
 
 // Description returns the module's purpose summary
 func (bm *BaseModule) Description() string {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
 	return bm.description
 }
 
 // Status returns the current operational state
 func (bm *BaseModule) Status() ModuleStatus {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
 	return bm.status
 }
 
 // SetStatus updates the module's operational state
 func (bm *BaseModule) SetStatus(status ModuleStatus) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	bm.status = status
+}
+
+// Execute runs the module with the provided context
+func (bm *BaseModule) Execute(ctx context.Context) error {
+	bm.SetStatus(StatusRunning)
+	select {
+	case <-ctx.Done():
+		bm.SetStatus(StatusCancelled)
+		return ctx.Err()
+	default:
+		bm.SetStatus(StatusCompleted)
+		return nil
+	}
 }
 
 // ModuleRegistry manages the collection of available modules

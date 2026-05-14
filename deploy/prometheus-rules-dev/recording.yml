@@ -1,0 +1,57 @@
+# HADES-V2 Prometheus Recording Rules for Development Environment
+# Recording rules for improved performance and query efficiency
+
+groups:
+  - name: hades.recording.rules
+    interval: 30s
+    rules:
+      # API Performance Metrics
+      - record: hades:api_request_rate:5m
+        expr: rate(http_requests_total[5m])
+        
+      - record: hades:api_request_duration:5m
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+        
+      - record: hades:api_error_rate:5m
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])
+        
+      # Database Metrics
+      - record: hades:db_connections:current
+        expr: pg_stat_database_numbackends
+        
+      - record: hades:db_query_duration:5m
+        expr: histogram_quantile(0.95, rate(pg_stat_statements_mean_time_seconds[5m]))
+        
+      # Redis Metrics
+      - record: hades:redis_memory_usage:bytes
+        expr: redis_memory_used_bytes
+        
+      - record: hades:redis_connections:current
+        expr: redis_connected_clients
+        
+      # System Metrics
+      - record: hades:cpu_usage:percent
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+        
+      - record: hades:memory_usage:percent
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+        
+      - record: hades:disk_usage:percent
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100
+        
+      # Container Metrics
+      - record: hades:container_cpu_usage:percent
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100
+        
+      - record: hades:container_memory_usage:bytes
+        expr: container_memory_usage_bytes
+        
+      # Security Events
+      - record: hades:security_events:rate
+        expr: rate(hades_security_events_total[5m])
+        
+      - record: hades:failed_authentications:rate
+        expr: rate(hades_authentication_failures_total[5m])
+        
+      - record: hades:blocked_requests:rate
+        expr: rate(hades_blocked_requests_total[5m])

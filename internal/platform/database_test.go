@@ -9,7 +9,7 @@ import (
 
 	"hades-v2/internal/database"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // resetDatabaseManager resets the global DatabaseManager to clean state between tests
@@ -43,7 +43,7 @@ func TestDatabaseConnection(t *testing.T) {
 	t.Run("ConnectToInMemorySQLite", func(t *testing.T) {
 		// Create config for in-memory SQLite
 		config := &DatabaseConfig{
-			Type:              "sqlite3",
+			Type:              "sqlite",
 			Path:              ":memory:",
 			MaxConnections:    5,
 			ConnTimeout:       10 * time.Second,
@@ -91,7 +91,7 @@ func TestDatabaseCRUD(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite
@@ -384,7 +384,7 @@ func TestDatabaseConnectionPooling(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite
@@ -585,7 +585,7 @@ func TestDatabaseClosedConnection(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite
@@ -649,7 +649,7 @@ func TestDatabaseConfigurationAndAudit(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite
@@ -850,7 +850,7 @@ func TestDatabaseScanResults(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite
@@ -1023,7 +1023,7 @@ func TestDatabaseCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	config := &DatabaseConfig{
-		Type:              "sqlite3",
+		Type:              "sqlite",
 		Path:              ":memory:",
 		Host:              "", // Empty for SQLite
 		Port:              0,  // Zero for SQLite

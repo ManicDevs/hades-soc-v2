@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hades-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hades_dev
+      POSTGRES_USER: hades
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/setup_postgresql.sh:/docker-entrypoint-initdb.d/setup.sh
+    ports:
+      - "5432:5432"
+    networks:
+      - hades-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hades -d hades_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hades:
+    build: .
+    container_name: hades-v2
+    restart: unless-stopped
+    ports:
+      - "8443:8443"    # Web dashboard
+      - "8080:8080"    # API server
+      - "2222:22"      # SSH access
+      - "19001:19001"  # P2P network port 1
+      - "19002:19002"  # P2P network port 2
+      - "19003:19003"  # P2P network port 3
+    volumes:
+      - ./data:/opt/hades/data
+      - ./config:/etc/hades
+      - ./logs:/var/log/hades
+    environment:
+      - HADES_VERSION=2.0
+      - HADES_BUILD=production
+      - HADES_LOG_LEVEL=info
+      - HADES_DEBUG=false
+    depends_on:
+      - postgres
+    networks:
+      - hades-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8443/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  hades-worker:
+    build: .
+    container_name: hades-v2-worker
+    restart: unless-stopped
+    depends_on:
+      - hades
+      - postgres
+    volumes:
+      - ./data:/opt/hades/data
+      - ./config:/etc/hades
+      - ./logs:/var/log/hades
+    environment:
+      - HADES_VERSION=2.0
+      - HADES_BUILD=production
+      - HADES_LOG_LEVEL=info
+      - HADES_WORKER_ID=worker-1
+    networks:
+      - hades-network
+    command: ["worker", "start", "--config", "/etc/hades/hades.yaml"]
+
+  hades-monitor:
+    build: .
+    container_name: hades-v2-monitor
+    restart: unless-stopped
+    depends_on:
+      - hades
+      - postgres
+    volumes:
+      - ./data:/opt/hades/data
+      - ./config:/etc/hades
+      - ./logs:/var/log/hades
+    environment:
+      - HADES_VERSION=2.0
+      - HADES_BUILD=production
+      - HADES_LOG_LEVEL=info
+    networks:
+      - hades-network
+    command: ["monitor", "--config", "/etc/hades/hades.yaml"]
+
+networks:
+  hades-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+volumes:
+  postgres_data:
+    driver: local
+  hades-data:
+    driver: local
+  hades-config:
+    driver: local
+  hades-logs:
+    driver: local

@@ -1,0 +1,37 @@
+[Unit]
+Description=Forever API - Free Tier Maximizer
+Documentation=https://github.com/manicdevs/hades-soc-v2
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=cerberus
+Group=cerberus
+WorkingDirectory=/home/cerberus/Desktop/hades
+ExecStart=/home/cerberus/Desktop/hades/bin/forever-api -interval 30s -monitor 2m
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=forever-api
+
+# Environment variables
+Environment=ANTHROPIC_API_KEY=%i
+Environment=GEMINI_API_KEY=%i
+Environment=OPENAI_API_KEY=%i
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

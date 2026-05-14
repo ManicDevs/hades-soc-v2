@@ -16,21 +16,22 @@ services:
       - "8081:8081"  # Debug port
     environment:
       - HADES_API_PORT=8080
-      - HADES_API_HOST=hades-dev.localhost
+      - HADES_API_HOST=api.hades.localhost
       - HADES_DEBUG_PORT=8081
       - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
       - HADES_DB_ENCRYPTION_KEY=hades-dev-db-encryption-key-2026
-      - DATABASE_URL=postgresql://hades_dev_user:dev_password@postgres-dev:5432/hades_dev?sslmode=disable
+      - DATABASE_URL=postgresql://hades_dev_user:dev_password@postgres.hades.localhost:5432/hades_dev?sslmode=disable
       - GIN_MODE=debug
       - LOG_LEVEL=debug
       - HOST_SEGMENT=hades
       - ENVIRONMENT=dev
       - HADES_DEV_CREDENTIALS=admin:admin123
+      - HADES_FIRST_LOGIN=true
       - ENABLE_PROFILING=true
       - ENABLE_METRICS=true
       - ENABLE_TRACING=true
-      - JAEGER_ENDPOINT=http://jaeger-dev:14268/api/traces
-      - PROMETHEUS_GATEWAY=http://prometheus-dev:9090
+      - JAEGER_ENDPOINT=http://jaeger.hades.localhost:14268/api/traces
+      - PROMETHEUS_GATEWAY=http://prometheus.hades.localhost:9090
     volumes:
       - ../data:/app/data:rw
       - ../config:/app/config:rw
@@ -78,7 +79,7 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hades-api-dev.rule=Host(`hades-dev.localhost`)"
+      - "traefik.http.routers.hades-api-dev.rule=Host(`api.hades.localhost`)"
       - "traefik.http.services.hades-api-dev.loadbalancer.server.port=8080"
       - "com.hades.environment=dev"
       - "com.hades.service=api"
@@ -95,8 +96,8 @@ services:
       - "3001:3001"  # Vite dev server
     environment:
       - NODE_ENV=development
-      - REACT_APP_API_URL=https://hades-dev.localhost/api
-      - REACT_APP_HOST=hades-dev.localhost
+      - REACT_APP_API_URL=http://api.hades.localhost:8080/api
+      - REACT_APP_HOST=hades.localhost
       - HOST_SEGMENT=hades
       - ENVIRONMENT=dev
       - CHOKIDAR_USEPOLLING=true
@@ -129,7 +130,7 @@ services:
       start_period: 30s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hades-dashboard-dev.rule=Host(`hades-dev.localhost`) && PathPrefix(`/`)"
+      - "traefik.http.routers.hades-dashboard-dev.rule=Host(`dashboard.hades.localhost`) && PathPrefix(`/`)"
       - "traefik.http.services.hades-dashboard-dev.loadbalancer.server.port=3000"
       - "com.hades.environment=dev"
       - "com.hades.service=dashboard"
@@ -145,8 +146,9 @@ services:
       - "8082:8081"
     environment:
       - HADES_ADMIN_PORT=8081
-      - HADES_ADMIN_HOST=hades-admin-dev.localhost
+      - HADES_ADMIN_HOST=admin.hades.localhost
       - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HADES_DB_ENCRYPTION_KEY=hades-dev-db-encryption-key-2026
       - HOST_SEGMENT=hades
       - ENVIRONMENT=dev
       - ENABLE_DEBUG=true
@@ -178,7 +180,7 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hades-admin-dev.rule=Host(`hades-admin-dev.localhost`)"
+      - "traefik.http.routers.hades-admin-dev.rule=Host(`admin.hades.localhost`)"
       - "traefik.http.services.hades-admin-dev.loadbalancer.server.port=8081"
       - "com.hades.environment=dev"
       - "com.hades.service=admin"
@@ -194,13 +196,14 @@ services:
       - "3002:3001"
     environment:
       - HADES_MONITORING_PORT=3001
-      - HADES_MONITORING_HOST=hades-monitoring-dev.localhost
+      - HADES_MONITORING_HOST=monitoring.hades.localhost
       - HADES_JWT_SECRET=hades-dev-jwt-secret-2026
+      - HADES_DB_ENCRYPTION_KEY=hades-dev-db-encryption-key-2026
       - HOST_SEGMENT=hades
       - ENVIRONMENT=dev
       - METRICS_ENABLED=true
-      - PROMETHEUS_URL=http://prometheus-dev:9090
-      - GRAFANA_URL=http://grafana-dev:3000
+      - PROMETHEUS_URL=http://prometheus.hades.localhost:9090
+      - GRAFANA_URL=http://grafana.hades.localhost:3000
     depends_on:
       - prometheus-dev
       - grafana-dev
@@ -224,7 +227,7 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hades-monitoring-dev.rule=Host(`hades-monitoring-dev.localhost`)"
+      - "traefik.http.routers.hades-monitoring-dev.rule=Host(`monitoring.hades.localhost`)"
       - "traefik.http.services.hades-monitoring-dev.loadbalancer.server.port=3001"
       - "com.hades.environment=dev"
       - "com.hades.service=monitoring"
@@ -382,7 +385,7 @@ services:
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_SERVER_ROOT_URL=http://localhost:3003
+      - GF_SERVER_ROOT_URL=http://grafana.hades.localhost:3003
     volumes:
       - grafana_dev_data:/var/lib/grafana
       - ./grafana/provisioning-dev:/etc/grafana/provisioning:ro
@@ -413,16 +416,17 @@ services:
 
   # Traefik Reverse Proxy (Development)
   traefik-dev:
-    image: traefik:v2.10
+    image: traefik:v3.3
     container_name: hades-traefik-dev
     ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"  # Traefik dashboard
+      - "8084:80"
+      - "8443:443"
+      - "8085:8080"  # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik-dev.yml:/etc/traefik/traefik.yml:ro
-      - ./ssl:/etc/ssl/certs:ro
+      - /home/cerberus/Desktop/hades/deploy/traefik-dev.yml:/etc/traefik/traefik.yml:ro
+      - /home/cerberus/Desktop/hades/deploy/traefik-dynamic-dev.yml:/etc/traefik/dynamic.yml:ro
+      - /home/cerberus/Desktop/hades/deploy/ssl:/etc/ssl/certs:ro
     networks:
       - hades-dev-network
     restart: unless-stopped
@@ -452,7 +456,7 @@ services:
       dockerfile: Dockerfile
     container_name: hades-dev-tools
     ports:
-      - "8084:8080"  # Dev tools UI
+      - "8086:8080"  # Dev tools UI
     volumes:
       - ../:/workspace:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro

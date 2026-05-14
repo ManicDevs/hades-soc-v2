@@ -31,8 +31,8 @@ func TestOrchestrationRule(t *testing.T) {
 		Action: func(ctx context.Context, e bus.Event) (string, error) {
 			return "executed", nil
 		},
-		Priority:  1,
-		Enabled:   true,
+		Priority: 1,
+		Enabled:  true,
 		Cooldown: time.Minute,
 	}
 

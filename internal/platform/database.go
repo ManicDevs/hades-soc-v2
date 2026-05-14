@@ -13,7 +13,7 @@ import (
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Type              string        `json:"type"`                // "postgresql" or "sqlite3"
+	Type              string        `json:"type"`                // "postgresql", "mysql", or "sqlite"
 	Host              string        `json:"host"`                // PostgreSQL host
 	Port              int           `json:"port"`                // PostgreSQL port
 	Database          string        `json:"database"`            // PostgreSQL database name
@@ -69,7 +69,7 @@ func NewDatabase(config *DatabaseConfig) (*Database, error) {
 		MaxOpenConns: config.MaxConnections,
 		MaxIdleConns: 5,
 		ConnLifetime: 5 * time.Minute,
-		UseSQLite:    config.Type == "sqlite3",
+		UseSQLite:    config.Type == "sqlite",
 		SQLitePath:   config.Path,
 	}
 

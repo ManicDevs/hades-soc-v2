@@ -9,12 +9,12 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // DistributedDatabaseConfig holds distributed database configuration
 type DistributedDatabaseConfig struct {
-	Type                string         `json:"type"`             // "postgresql", "mysql", "sqlite3"
+	Type                string         `json:"type"`             // "postgresql", "mysql", "sqlite"
 	Primary             DatabaseNode   `json:"primary"`          // Primary database node
 	Replicas            []DatabaseNode `json:"replicas"`         // Replica database nodes
 	FailoverEnabled     bool           `json:"failover_enabled"` // Enable automatic failover
@@ -189,7 +189,7 @@ func (dd *DistributedDatabase) buildConnectionString(node DatabaseNode) string {
 	case "mysql":
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 			node.Username, node.Password, node.Host, node.Port, node.Database)
-	case "sqlite3":
+	case "sqlite":
 		return node.Database
 	default:
 		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",

@@ -2,30 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Dark theme (default) */
+  --bg-primary: #0a0e27;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1f2937;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --border-color: #374151;
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger-color: #ef4444;
+  --warning-color: #f59e0b;
+  --success-color: #10b981;
+  --card-bg: #1f2937;
+  --input-bg: #374151;
+}
+
+.light {
+  --bg-primary: #f9fafb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border-color: #e5e7eb;
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger-color: #dc2626;
+  --warning-color: #d97706;
+  --success-color: #059669;
+  --card-bg: #ffffff;
+  --input-bg: #f3f4f6;
+}
+
 @layer base {
   * {
-    @apply border-gray-700;
+    @apply border-[var(--border-color)];
   }
-  
+
+  html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
   body {
-    @apply bg-hades-dark text-gray-100;
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)];
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 
 @layer components {
   .hades-card {
-    @apply bg-gray-800 border border-gray-700 rounded-lg shadow-xl;
+    @apply bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg shadow-xl;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
   }
-  
+
   .hades-button-primary {
-    @apply bg-hades-primary hover:bg-blue-600 text-white px-4 py-2 rounded-md font-medium transition-colors;
+    @apply bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white px-4 py-2 rounded-md font-medium transition-colors;
   }
-  
+
   .hades-button-secondary {
-    @apply bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors;
+    @apply bg-[var(--bg-tertiary)] hover:bg-[var(--border-color)] text-[var(--text-primary)] px-4 py-2 rounded-md font-medium transition-colors;
   }
-  
+
   .hades-input {
-    @apply bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-hades-primary focus:border-transparent;
+    @apply bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] focus:border-transparent;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .hades-bg-primary {
+    @apply bg-[var(--bg-primary)];
+  }
+
+  .hades-bg-secondary {
+    @apply bg-[var(--bg-secondary)];
+  }
+
+  .hades-bg-tertiary {
+    @apply bg-[var(--bg-tertiary)];
+  }
+
+  .hades-text-primary {
+    @apply text-[var(--text-primary)];
+  }
+
+  .hades-text-secondary {
+    @apply text-[var(--text-secondary)];
+  }
+
+  .hades-border {
+    @apply border-[var(--border-color)];
+  }
+
+  .theme-transition {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
   }
 }
