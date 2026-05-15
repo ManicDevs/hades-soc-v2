@@ -247,20 +247,21 @@ function App() {
   // Initialize hot reload in development
   const hotReloadEnabled = process.env.NODE_ENV === 'development'
   
-  useEffect(() => {
-    let hotReload: ViteHotReload | null = null
+  // The useEffect block for ViteHotReload is moved to HotReloadProvider
+  // useEffect(() => {
+  //   let hotReload: ViteHotReload | null = null
     
-    if (hotReloadEnabled) {
-      hotReload = new ViteHotReload()
-      hotReload.connect()
-    }
+  //   if (hotReloadEnabled) {
+  //     hotReload = new ViteHotReload()
+  //     hotReload.connect()
+  //   }
     
-    return () => {
-      if (hotReload) {
-        hotReload.disconnect()
-      }
-    }
-  }, [hotReloadEnabled])
+  //   return () => {
+  //     if (hotReload) {
+  //       hotReload.disconnect()
+  //     }
+  //   }
+  // }, [hotReloadEnabled])
 
   return (
     <HotReloadProvider enabled={hotReloadEnabled}>

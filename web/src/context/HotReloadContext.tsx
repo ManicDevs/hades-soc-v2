@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
-import { io, Socket } from 'socket.io-client'
-
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
+import { ViteHotReload } from '../utils/hotReloadVite' // Import ViteHotReload
 // Hot reload event types
 interface HotReloadEvent {
-  type: 'component-update' | 'style-update' | 'config-update'
+  type: 'component-update' | 'style-update' | 'config-update' | 'force-reload'
   componentId?: string
   data?: any
   timestamp: number
@@ -14,7 +13,7 @@ interface HotReloadContextType {
   connected: boolean
   lastUpdate: number
   forceReload: () => void
-  updateComponent: (componentId: string, data: any) => void
+  // updateComponent: (componentId: string, data: any) => void // Not needed with Vite HMR
 }
 
 const HotReloadContext = createContext<HotReloadContextType | null>(null)
@@ -36,111 +35,59 @@ export const HotReloadProvider: React.FC<HotReloadProviderProps> = ({
   children, 
   enabled = process.env.NODE_ENV === 'development' 
 }) => {
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [viteHotReload, setViteHotReload] = useState<ViteHotReload | null>(null)
   const [connected, setConnected] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(Date.now())
   const [isEnabled] = useState(enabled)
 
-  const connectSocket = useCallback(() => {
-    if (!enabled || socket) return
-
-    const newSocket = io('ws://localhost:3001', {
-      transports: ['websocket'],
-      upgrade: false,
-      rememberUpgrade: false,
-    })
-
-    newSocket.on('connect', () => {
-      console.log('🔥 Hot reload connected')
-      setConnected(true)
-    })
-
-    newSocket.on('disconnect', () => {
-      console.log('🔥 Hot reload disconnected')
-      setConnected(false)
-    })
-
-    newSocket.on('hot-reload', (event: HotReloadEvent) => {
-      console.log('🔄 Hot reload event:', event)
-      setLastUpdate(event.timestamp)
-      
-      switch (event.type) {
-        case 'component-update':
-          if (event.componentId) {
-            // Trigger component hot swap without page reload
-            const customEvent = new CustomEvent('component-hot-swap', {
-              detail: { componentId: event.componentId, data: event.data }
-            })
-            window.dispatchEvent(customEvent)
-          }
-          break
-          
-        case 'style-update':
-          // Hot swap CSS without page reload
-          const styleElements = document.querySelectorAll('style[data-hot-reload]')
-          styleElements.forEach(el => el.remove())
-          
-          if (event.data) {
-            const style = document.createElement('style')
-            style.textContent = event.data
-            style.setAttribute('data-hot-reload', 'true')
-            document.head.appendChild(style)
-          }
-          break
-          
-        case 'config-update':
-          // Update configuration without page reload
-          const configEvent = new CustomEvent('config-hot-update', {
-            detail: event.data
-          })
-          window.dispatchEvent(configEvent)
-          break
+  const handleComponentHotSwap = useCallback((event: Event) => {
+    const customEvent = event as CustomEvent<{ componentId: string; data: any }>
+    if (customEvent.detail.componentId) {
+        setLastUpdate(Date.now())
+      // You can add more specific handling here if needed
+      console.log(`🔥 Hot swapped component: ${customEvent.detail.componentId}`, customEvent.detail.data)
       }
-    })
+  }, [])
 
-    newSocket.on('force-reload', () => {
-      console.log('🔄 Force reload requested')
-      window.location.reload()
-    })
+  const handleConfigHotUpdate = useCallback((event: Event) => {
+    const customEvent = event as CustomEvent<any>
+    setLastUpdate(Date.now())
+    console.log('🔥 Hot config update:', customEvent.detail)
+  }, [])
 
-    setSocket(newSocket)
-  }, [enabled, socket])
+  useEffect(() => {
+    if (!enabled) return
 
-  const disconnectSocket = useCallback(() => {
-    if (socket) {
-      socket.disconnect()
-      setSocket(null)
-      setConnected(false)
+    const hmr = new ViteHotReload()
+    if (hmr.connect()) {
+      setViteHotReload(hmr)
+      setConnected(true)
+
+      // Listen to custom events dispatched by ViteHotReload
+      window.addEventListener('component-hot-swap', handleComponentHotSwap as EventListener)
+      window.addEventListener('config-hot-update', handleConfigHotUpdate as EventListener)
+    } else {
+      console.warn('Vite HMR is not available. Hot reload disabled.')
+}
+
+    return () => {
+      if (hmr) {
+        hmr.disconnect()
+      }
+      window.removeEventListener('component-hot-swap', handleComponentHotSwap as EventListener)
+      window.removeEventListener('config-hot-update', handleConfigHotUpdate as EventListener)
     }
-  }, [socket])
+  }, [enabled, handleComponentHotSwap, handleConfigHotUpdate])
 
   const forceReload = useCallback(() => {
     window.location.reload()
   }, [])
-
-  const updateComponent = useCallback((componentId: string, data: any) => {
-    if (socket && connected) {
-      socket.emit('component-update', { componentId, data })
-    }
-  }, [socket, connected])
-
-  // Auto-connect on mount
-  React.useEffect(() => {
-    if (enabled) {
-      connectSocket()
-    }
-
-    return () => {
-      disconnectSocket()
-    }
-  }, [enabled, connectSocket, disconnectSocket])
 
   const contextValue: HotReloadContextType = {
     isEnabled,
     connected,
     lastUpdate,
     forceReload,
-    updateComponent
   }
 
   return (
@@ -155,7 +102,7 @@ export const useHotSwap = (componentId: string) => {
   const [data, setData] = useState<any>(null)
   const [lastUpdate, setLastUpdate] = useState(Date.now())
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleHotSwap = (event: CustomEvent) => {
       if (event.detail.componentId === componentId) {
         console.log(`🔥 Hot swapping component: ${componentId}`)
@@ -179,7 +126,7 @@ export const useHotConfig = () => {
   const [config, setConfig] = useState<any>(null)
   const [lastUpdate, setLastUpdate] = useState(Date.now())
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleConfigUpdate = (event: CustomEvent) => {
       console.log('🔥 Hot config update:', event.detail)
       setConfig(event.detail)
@@ -195,3 +142,4 @@ export const useHotConfig = () => {
 
   return { config, lastUpdate }
 }
+
