@@ -1,0 +1,51 @@
+name: OS Full Build (manual)
+
+# Manual workflow to run a full Buildroot/kernel/ISO build.
+# WARNING: This job can take 30-120+ minutes and consumes significant runner resources.
+# Trigger manually via the Actions UI (workflow_dispatch) when you want a full reproducible build.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-os:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps (apt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex gettext automake autoconf pkg-config gawk python3 python3-distutils bc libncurses5-dev libssl-dev wget xorriso grub-pc-bin mtools cpio
+
+      - name: Setup Buildroot
+        run: |
+          cd os/hades-linux/scripts
+          ./setup-buildroot.sh
+
+      - name: Build Rootfs (fast)
+        run: |
+          cd os/hades-linux/scripts
+          ./build-rootfs.sh
+
+      - name: Full Build (BUILDROOT)
+        env:
+          ALLOW_LONG_BUILDS: 1
+        run: |
+          cd os/hades-linux/scripts
+          ALLOW_LONG_BUILDS=1 ./build.sh build
+
+      - name: Build GRUB ISO
+        run: |
+          cd os/hades-boot-kernel/scripts
+          ./build.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hades-os-images
+          path: |
+            os/hades-linux/scripts/buildroot-2024.08.1/output/images/
+            os/hades-boot-kernel/scripts/output/hades-os.iso
