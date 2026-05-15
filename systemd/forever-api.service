@@ -6,21 +6,35 @@ Wants=network.target
 
 [Service]
 Type=simple
+# NOTE: User/Group default to 'cerberus' for developer environments. Override via
+# /etc/default/forever-api or `systemctl set-environment` in production.
 User=cerberus
 Group=cerberus
-WorkingDirectory=/home/cerberus/Desktop/hades
-ExecStart=/home/cerberus/Desktop/hades/bin/forever-api -interval 30s -monitor 2m
+
+# Load optional environment file (ignored if missing). Use this file to store
+# API keys and other runtime configuration. Example:
+#  ANTHROPIC_API_KEY=...
+#  GEMINI_API_KEY=...
+#  OPENAI_API_KEY=...
+EnvironmentFile=-/etc/default/forever-api
+
+# Default base path for the HADES workspace. Can be overridden in
+# /etc/default/forever-api or via `systemctl set-environment HADES_BASE=/opt/hades`.
+Environment=HADES_BASE=/home/cerberus/Desktop/hades
+
+# Keep WorkingDirectory minimal and perform an explicit chdir in ExecStart so
+# that we avoid hardcoding user home directories in multiple fields.
+WorkingDirectory=/
+
+# Start command uses the HADES_BASE environment variable. This keeps the unit
+# portable while still allowing the service to run as the configured User.
+ExecStart=/bin/sh -c 'cd "${HADES_BASE}" && exec ./bin/forever-api -interval 30s -monitor 2m'
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=forever-api
-
-# Environment variables
-Environment=ANTHROPIC_API_KEY=%i
-Environment=GEMINI_API_KEY=%i
-Environment=OPENAI_API_KEY=%i
 
 # Security settings
 NoNewPrivileges=true
