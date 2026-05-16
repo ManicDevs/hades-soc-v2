@@ -28,6 +28,18 @@ if [ -d "$REPO_ROOT/config" ]; then
   cp -r "$REPO_ROOT/config" "$WORK/"
 fi
 
+# If gobox exists in bin/, include it and create common symlinks
+if [ -f "$REPO_ROOT/bin/gobox" ]; then
+  mkdir -p "$WORK/bin"
+  cp "$REPO_ROOT/bin/gobox" "$WORK/bin/gobox"
+  chmod +x "$WORK/bin/gobox"
+  pushd "$WORK/bin" >/dev/null
+  for a in ls cat hostname echo sleep whoami ps ifconfig uptime; do
+    if [ ! -e "$a" ]; then ln -s gobox "$a"; fi
+  done
+  popd >/dev/null
+fi
+
 # Create startup script
 cat > "$WORK/start.sh" <<'EOF'
 #!/usr/bin/env bash
