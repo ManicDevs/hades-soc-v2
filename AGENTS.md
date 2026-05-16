@@ -23,23 +23,7 @@ npm run test:unit                         # vitest unit tests
 npm run test:e2e                          # playwright e2e tests
 ```
 
-## OS Components
 
-```bash
-# Go Kernel (userspace simulation)
-cd /home/cerberus/Desktop/hades
-go build -o os/hades-go-kernel/hades-kernel ./os/hades-go-kernel
-./os/hades-go-kernel/hades-kernel
-
-# Linux Build (Buildroot - requires ~30-60 min first build)
-cd os/hades-linux/scripts
-sudo ./build.sh build     # Full build
-sudo ./build.sh config    # Menuconfig
-sudo ./build.sh clean     # Clean
-# Outputs: output/images/bzImage, rootfs.ext4, hades-v2.img
-```
-
-## Important Notes
 
 - Buildroot sources already downloaded in `os/hades-linux/scripts/buildroot-2024.08.1/dl/`
 - Kernel config at `os/hades-linux/configs/kernel-config`
