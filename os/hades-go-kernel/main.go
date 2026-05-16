@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,6 +20,10 @@ import (
 	"time"
 )
 
+// Lightweight pure-Go userspace kernel simulation with a tiny service supervisor
+// and health monitoring. Designed for rapid development without QEMU or full
+// kernel rebuilds.
+
 var dmesgBuf []string
 var bootTime time.Time
 var supervisor *Supervisor
@@ -26,35 +31,18 @@ var supervisor *Supervisor
 func main() {
 	bootTime = time.Now()
 	bootSequence()
-
-	// Initialize supervisor and optionally auto-start services
-	supervisor = NewSupervisor()
-	if os.Getenv("HADES_AUTO_START_SERVICES") != "0" {
-		// Attempt to find hades-server in repo tree and start it
-		if path, err := findBinary("hades-server"); err == nil {
-			svc := &Service{
-				Name:         "hades",
-				Path:         path,
-				Args:         []string{},
-				AutoRestart:  true,
-				RestartDelay: 5 * time.Second,
-			}
-			supervisor.AddService(svc)
-			if err := supervisor.StartService("hades"); err != nil {
-				appendDmesg("failed to auto-start hades: " + err.Error())
-			} else {
-				appendDmesg("auto-started hades: " + path)
-			}
-		} else {
-			appendDmesg("hades-server not found for auto-start: " + err.Error())
-		}
-	}
-
 	startShell()
 }
 
-// Service supervision (very small supervisor)
+// HealthStatus holds the last health check result for a service.
+type HealthStatus struct {
+	LastChecked time.Time `json:"last_checked"`
+	StatusCode  int       `json:"status_code,omitempty"`
+	Status      string    `json:"status"`
+	Err         string    `json:"error,omitempty"`
+}
 
+// Service struct describes an external process we can supervise.
 type Service struct {
 	Name         string
 	Path         string
@@ -67,13 +55,15 @@ type Service struct {
 	lock         sync.Mutex
 }
 
+// Supervisor holds registered services and recent health statuses.
 type Supervisor struct {
 	services map[string]*Service
+	health   map[string]HealthStatus
 	mu       sync.Mutex
 }
 
 func NewSupervisor() *Supervisor {
-	return &Supervisor{services: make(map[string]*Service)}
+	return &Supervisor{services: make(map[string]*Service), health: make(map[string]HealthStatus)}
 }
 
 func (s *Supervisor) AddService(svc *Service) {
@@ -179,6 +169,19 @@ func (s *Supervisor) Status(name string) string {
 	return "stopped"
 }
 
+func (s *Supervisor) SetHealth(name string, hs HealthStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.health[name] = hs
+}
+
+func (s *Supervisor) GetHealth(name string) (HealthStatus, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hs, ok := s.health[name]
+	return hs, ok
+}
+
 // findBinary searches upward from common start points for an executable named 'name'
 func findBinary(name string) (string, error) {
 	starts := []string{}
@@ -209,6 +212,58 @@ func findBinary(name string) (string, error) {
 		return p, nil
 	}
 	return "", fmt.Errorf("executable %s not found", name)
+}
+
+// ServiceConfig is the JSON manifest entry for a supervised service.
+type ServiceConfig struct {
+	Name         string   `json:"name"`
+	Path         string   `json:"path"`
+	Args         []string `json:"args,omitempty"`
+	AutoStart    bool     `json:"auto_start,omitempty"`
+	AutoRestart  bool     `json:"auto_restart,omitempty"`
+	RestartDelay int      `json:"restart_delay,omitempty"` // seconds
+	HealthURL    string   `json:"health_url,omitempty"`
+}
+
+func loadServicesFromCandidates(cands []string) error {
+	for _, p := range cands {
+		if _, err := os.Stat(p); err == nil {
+			b, err := ioutil.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			var list []ServiceConfig
+			if err := json.Unmarshal(b, &list); err != nil {
+				return err
+			}
+			for _, sc := range list {
+				svc := &Service{
+					Name:         sc.Name,
+					Path:         sc.Path,
+					Args:         sc.Args,
+					AutoRestart:  sc.AutoRestart,
+					RestartDelay: time.Duration(sc.RestartDelay) * time.Second,
+				}
+				supervisor.AddService(svc)
+				if sc.HealthURL != "" {
+					// start health monitor for this service (does not start the service itself)
+					go func(name, url string, interval time.Duration) {
+						startHealthMonitor(name, url, interval)
+					}(sc.Name, sc.HealthURL, 15*time.Second)
+				}
+				if sc.AutoStart && os.Getenv("HADES_AUTO_START_SERVICES") != "0" {
+					// attempt to start service now
+					if err := supervisor.StartService(sc.Name); err != nil {
+						appendDmesg(fmt.Sprintf("failed to auto-start %s: %v", sc.Name, err))
+					} else {
+						appendDmesg(fmt.Sprintf("auto-started %s from manifest", sc.Name))
+					}
+				}
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no services manifest found in candidates")
 }
 
 func bootSequence() {
@@ -242,27 +297,38 @@ func startHealthMonitor(svcName, url string, interval time.Duration) {
 	client := &http.Client{Timeout: 3 * time.Second}
 	for {
 		time.Sleep(interval)
+		hs := HealthStatus{LastChecked: time.Now()}
 		resp, err := client.Get(url)
-		if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			appendDmesg(fmt.Sprintf("healthcheck failed for %s: %v (status=%v)", svcName, err, func() interface{} {
-				if resp == nil {
-					return "nil"
-				}
-				return resp.Status
-			}()))
+		if err != nil {
+			hs.Status = "FAIL"
+			hs.Err = err.Error()
+			supervisor.SetHealth(svcName, hs)
+			appendDmesg(fmt.Sprintf("healthcheck failed for %s: %v", svcName, err))
 			// Restart service
-			appendDmesg("restarting service due to health failure: " + svcName)
 			_ = supervisor.StopService(svcName)
 			time.Sleep(2 * time.Second)
 			_ = supervisor.StartService(svcName)
 			continue
 		}
+		hs.StatusCode = resp.StatusCode
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			hs.Status = "OK"
+		} else {
+			hs.Status = "FAIL"
+			hs.Err = fmt.Sprintf("http status %d", resp.StatusCode)
+		}
 		_ = resp.Body.Close()
-		appendDmesg(fmt.Sprintf("healthcheck OK for %s", svcName))
+		supervisor.SetHealth(svcName, hs)
+		appendDmesg(fmt.Sprintf("healthcheck %s: %s", svcName, hs.Status))
 	}
 }
 
 func startShell() {
+	// Attempt to load services manifest (optional)
+	supervisor = NewSupervisor()
+	manifestCandidates := []string{"./services.json", "./config/services.json", "./services.json"}
+	_ = loadServicesFromCandidates(manifestCandidates) // best-effort
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("hades> ")
@@ -307,7 +373,7 @@ func startShell() {
 			doClear()
 		case "service":
 			if len(args) == 0 {
-				fmt.Println("usage: service <start|stop|status> <name>")
+				fmt.Println("usage: service <start|stop|status|health|list> <name>")
 				break
 			}
 			action := args[0]
@@ -345,6 +411,23 @@ func startShell() {
 					break
 				}
 				fmt.Println(svcName, ":", supervisor.Status(svcName))
+			case "health":
+				if svcName == "" {
+					fmt.Println("usage: service health <name>")
+					break
+				}
+				if hs, ok := supervisor.GetHealth(svcName); ok {
+					fmt.Printf("%+v\n", hs)
+				} else {
+					fmt.Println("no health data for", svcName)
+				}
+			case "list":
+				fmt.Println("services:")
+				for n := range supervisor.services {
+					st := supervisor.Status(n)
+					hs, _ := supervisor.GetHealth(n)
+					fmt.Printf(" - %s : %s (health=%s)\n", n, st, hs.Status)
+				}
 			default:
 				fmt.Println("unknown service action", action)
 			}
@@ -373,7 +456,7 @@ func doHelp() {
 	fmt.Println("  cat <file>  - show file contents")
 	fmt.Println("  ifconfig    - list network interfaces")
 	fmt.Println("  clear       - clear the screen")
-	fmt.Println("  service     - manage services: service <start|stop|status> <name>")
+	fmt.Println("  service     - manage services: service <start|stop|status|health|list> <name>")
 	fmt.Println("  shutdown    - power off (exit)")
 	fmt.Println("  exit        - exit shell")
 }

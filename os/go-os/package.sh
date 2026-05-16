@@ -40,6 +40,37 @@ if [ -f "$REPO_ROOT/bin/gobox" ]; then
   popd >/dev/null
 fi
 
+# Services manifest: prefer repository-provided manifest; otherwise create a default if hades-server present
+MANIFEST_SRC=""
+if [ -f "$REPO_ROOT/services.json" ]; then
+  MANIFEST_SRC="$REPO_ROOT/services.json"
+elif [ -f "$REPO_ROOT/config/services.json" ]; then
+  MANIFEST_SRC="$REPO_ROOT/config/services.json"
+fi
+
+if [ -n "$MANIFEST_SRC" ]; then
+  cp "$MANIFEST_SRC" "$WORK/services.json"
+  echo "[+] Included services manifest from $MANIFEST_SRC"
+else
+  # Create a default manifest if hades-server exists
+  if [ -f "$REPO_ROOT/hades-server" ]; then
+    cat > "$WORK/services.json" <<'EOF'
+[
+  {
+    "name": "hades",
+    "path": "./hades-server",
+    "args": [],
+    "auto_start": true,
+    "auto_restart": true,
+    "restart_delay": 5,
+    "health_url": "http://localhost:8443/api/health"
+  }
+]
+EOF
+    echo "[+] Created default services.json for hades"
+  fi
+fi
+
 # Create startup script
 cat > "$WORK/start.sh" <<'EOF'
 #!/usr/bin/env bash
