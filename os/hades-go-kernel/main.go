@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -234,6 +235,31 @@ func bootSequence() {
 func appendDmesg(msg string) {
 	timestamp := time.Now().Format(time.RFC3339)
 	dmesgBuf = append(dmesgBuf, fmt.Sprintf("%s %s", timestamp, msg))
+}
+
+// startHealthMonitor periodically hits an HTTP health endpoint and restarts the service if unhealthy
+func startHealthMonitor(svcName, url string, interval time.Duration) {
+	client := &http.Client{Timeout: 3 * time.Second}
+	for {
+		time.Sleep(interval)
+		resp, err := client.Get(url)
+		if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			appendDmesg(fmt.Sprintf("healthcheck failed for %s: %v (status=%v)", svcName, err, func() interface{} {
+				if resp == nil {
+					return "nil"
+				}
+				return resp.Status
+			}()))
+			// Restart service
+			appendDmesg("restarting service due to health failure: " + svcName)
+			_ = supervisor.StopService(svcName)
+			time.Sleep(2 * time.Second)
+			_ = supervisor.StartService(svcName)
+			continue
+		}
+		_ = resp.Body.Close()
+		appendDmesg(fmt.Sprintf("healthcheck OK for %s", svcName))
+	}
 }
 
 func startShell() {
