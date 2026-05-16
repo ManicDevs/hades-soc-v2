@@ -2,26 +2,212 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 var dmesgBuf []string
 var bootTime time.Time
+var supervisor *Supervisor
 
 func main() {
 	bootTime = time.Now()
 	bootSequence()
+
+	// Initialize supervisor and optionally auto-start services
+	supervisor = NewSupervisor()
+	if os.Getenv("HADES_AUTO_START_SERVICES") != "0" {
+		// Attempt to find hades-server in repo tree and start it
+		if path, err := findBinary("hades-server"); err == nil {
+			svc := &Service{
+				Name:         "hades",
+				Path:         path,
+				Args:         []string{},
+				AutoRestart:  true,
+				RestartDelay: 5 * time.Second,
+			}
+			supervisor.AddService(svc)
+			if err := supervisor.StartService("hades"); err != nil {
+				appendDmesg("failed to auto-start hades: " + err.Error())
+			} else {
+				appendDmesg("auto-started hades: " + path)
+			}
+		} else {
+			appendDmesg("hades-server not found for auto-start: " + err.Error())
+		}
+	}
+
 	startShell()
+}
+
+// Service supervision (very small supervisor)
+
+type Service struct {
+	Name         string
+	Path         string
+	Args         []string
+	Cmd          *exec.Cmd
+	AutoRestart  bool
+	RestartDelay time.Duration
+	RestartCount int
+	StartedAt    time.Time
+	lock         sync.Mutex
+}
+
+type Supervisor struct {
+	services map[string]*Service
+	mu       sync.Mutex
+}
+
+func NewSupervisor() *Supervisor {
+	return &Supervisor{services: make(map[string]*Service)}
+}
+
+func (s *Supervisor) AddService(svc *Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.services[svc.Name] = svc
+}
+
+func (s *Supervisor) StartService(name string) error {
+	s.mu.Lock()
+	svc, ok := s.services[name]
+	s.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("service not found: %s", name)
+	}
+
+	svc.lock.Lock()
+	defer svc.lock.Unlock()
+
+	if svc.Cmd != nil && svc.Cmd.Process != nil {
+		return fmt.Errorf("service %s already running (pid=%d)", name, svc.Cmd.Process.Pid)
+	}
+
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, svc.Path, svc.Args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = nil
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start %s: %w", name, err)
+	}
+
+	svc.Cmd = cmd
+	svc.StartedAt = time.Now()
+	go s.monitorService(svc)
+	return nil
+}
+
+func (s *Supervisor) monitorService(svc *Service) {
+	// Wait for the process to exit and optionally restart
+	err := svc.Cmd.Wait()
+	exitTime := time.Now()
+
+	svc.lock.Lock()
+	svc.Cmd = nil
+	svc.RestartCount++
+	svc.lock.Unlock()
+
+	note := fmt.Sprintf("service %s exited at %s (err=%v)", svc.Name, exitTime.Format(time.RFC3339), err)
+	appendDmesg(note)
+
+	if svc.AutoRestart {
+		// Simple backoff strategy
+		delay := svc.RestartDelay
+		if svc.RestartCount > 3 {
+			delay = delay * 2
+		}
+		appendDmesg(fmt.Sprintf("restarting service %s in %s", svc.Name, delay))
+		time.Sleep(delay)
+		if err := s.StartService(svc.Name); err != nil {
+			appendDmesg(fmt.Sprintf("failed to restart %s: %v", svc.Name, err))
+		}
+	}
+}
+
+func (s *Supervisor) StopService(name string) error {
+	s.mu.Lock()
+	svc, ok := s.services[name]
+	s.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("service not found: %s", name)
+	}
+
+	svc.lock.Lock()
+	defer svc.lock.Unlock()
+
+	if svc.Cmd == nil || svc.Cmd.Process == nil {
+		return fmt.Errorf("service %s not running", name)
+	}
+
+	if err := svc.Cmd.Process.Signal(os.Interrupt); err != nil {
+		_ = svc.Cmd.Process.Kill()
+	}
+	go func() { _ = svc.Cmd.Wait(); svc.lock.Lock(); svc.Cmd = nil; svc.lock.Unlock() }()
+	return nil
+}
+
+func (s *Supervisor) Status(name string) string {
+	s.mu.Lock()
+	svc, ok := s.services[name]
+	s.mu.Unlock()
+	if !ok {
+		return "not-found"
+	}
+	svc.lock.Lock()
+	defer svc.lock.Unlock()
+	if svc.Cmd != nil && svc.Cmd.Process != nil {
+		pid := svc.Cmd.Process.Pid
+		upt := time.Since(svc.StartedAt)
+		return fmt.Sprintf("running pid=%d uptime=%s", pid, upt.String())
+	}
+	return "stopped"
+}
+
+// findBinary searches upward from common start points for an executable named 'name'
+func findBinary(name string) (string, error) {
+	starts := []string{}
+	if wd, err := os.Getwd(); err == nil {
+		starts = append(starts, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		starts = append(starts, filepath.Dir(exe))
+	}
+	for _, start := range starts {
+		dir := start
+		for i := 0; i < 8; i++ {
+			cand := filepath.Join(dir, name)
+			if info, err := os.Stat(cand); err == nil && !info.IsDir() {
+				if info.Mode()&0111 != 0 {
+					abs, _ := filepath.Abs(cand)
+					return abs, nil
+				}
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+	return "", fmt.Errorf("executable %s not found", name)
 }
 
 func bootSequence() {
@@ -29,8 +215,8 @@ func bootSequence() {
 		"HADES V2 — Pure Go Kernel",
 		"Initializing Go runtime subsystems...",
 		"Probing CPU…",
-		"Initializing memory manager…",
-		"Bringing up virtual network interfaces…",
+		"Initializing memory manager...",
+		"Bringing up virtual network interfaces...",
 		"Starting init (PID 1) — hades shell",
 	}
 
@@ -93,6 +279,49 @@ func startShell() {
 			doIfconfig()
 		case "clear":
 			doClear()
+		case "service":
+			if len(args) == 0 {
+				fmt.Println("usage: service <start|stop|status> <name>")
+				break
+			}
+			action := args[0]
+			svcName := ""
+			if len(args) > 1 {
+				svcName = args[1]
+			}
+			switch action {
+			case "start":
+				if svcName == "" {
+					fmt.Println("specify service name")
+					break
+				}
+				if err := supervisor.StartService(svcName); err != nil {
+					fmt.Println("error:", err)
+				} else {
+					fmt.Println("started", svcName)
+				}
+			case "stop":
+				if svcName == "" {
+					fmt.Println("specify service name")
+					break
+				}
+				if err := supervisor.StopService(svcName); err != nil {
+					fmt.Println("error:", err)
+				} else {
+					fmt.Println("stopped", svcName)
+				}
+			case "status":
+				if svcName == "" {
+					fmt.Println("services:")
+					for n := range supervisor.services {
+						fmt.Println(" -", n, ":", supervisor.Status(n))
+					}
+					break
+				}
+				fmt.Println(svcName, ":", supervisor.Status(svcName))
+			default:
+				fmt.Println("unknown service action", action)
+			}
 		case "shutdown", "poweroff":
 			fmt.Println("Shutting down... Goodbye.")
 			appendDmesg("Shutdown requested via shell")
@@ -118,6 +347,7 @@ func doHelp() {
 	fmt.Println("  cat <file>  - show file contents")
 	fmt.Println("  ifconfig    - list network interfaces")
 	fmt.Println("  clear       - clear the screen")
+	fmt.Println("  service     - manage services: service <start|stop|status> <name>")
 	fmt.Println("  shutdown    - power off (exit)")
 	fmt.Println("  exit        - exit shell")
 }
