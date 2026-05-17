@@ -1,56 +1,61 @@
 // Users API
-import API_CONFIG from './config'
+import API_CONFIG from "./config";
 
 export const usersAPI = {
   // Get all users
-  getUsers: async (filters = {}) => {
-    const params = new URLSearchParams(filters)
+  getUsers: async (
+    filters: Record<string, string> = {} as Record<string, string>,
+  ): Promise<unknown> => {
+    const params = new URLSearchParams(filters);
     return await API_CONFIG.request(`/users?${params}`, {
-      method: 'GET'
-    })
+      method: "GET",
+    });
   },
 
   // Get user by ID
-  getUser: async (id: string) => {
+  getUser: async (id: string): Promise<unknown> => {
     return await API_CONFIG.request(`/users/${id}`, {
-      method: 'GET'
-    })
+      method: "GET",
+    });
   },
 
   // Create user
-  createUser: async (userData: Record<string, any>) => {
-    return await API_CONFIG.request('/users', {
-      method: 'POST',
-      body: JSON.stringify(userData)
-    })
+  createUser: async (userData: Record<string, unknown>): Promise<unknown> => {
+    return await API_CONFIG.request("/users", {
+      method: "POST",
+      body: JSON.stringify(userData),
+    });
   },
 
   // Update user
-  updateUser: async (id: string, userData: Record<string, any>) => {
+  updateUser: async (
+    id: string,
+    userData: Record<string, unknown>,
+  ): Promise<unknown> => {
     return await API_CONFIG.request(`/users/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(userData)
-    })
+      method: "PUT",
+      body: JSON.stringify(userData),
+    });
   },
 
   // Delete user
-  deleteUser: async (id: string) => {
+  deleteUser: async (id: string): Promise<unknown> => {
     return await API_CONFIG.request(`/users/${id}`, {
-      method: 'DELETE'
-    })
+      method: "DELETE",
+    });
   },
 
   // Get user statistics
-  getUserStats: async () => {
-    return await API_CONFIG.request('/users/stats', {
-      method: 'GET'
-    })
+  getUserStats: async (): Promise<unknown> => {
+    return await API_CONFIG.request("/users/stats", {
+      method: "GET",
+    });
   },
 
   // Get user roles
-  getUserRoles: async () => {
-    return await API_CONFIG.request('/users/roles', {
-      method: 'GET'
-    })
+  getUserRoles: async (): Promise<unknown> => {
+    return await API_CONFIG.request("/users/roles", {
+      method: "GET",
+    });
   },
-}
+};

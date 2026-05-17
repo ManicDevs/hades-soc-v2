@@ -1,70 +1,77 @@
 // Security API
-import API_CONFIG from './config'
+import API_CONFIG from "./config";
 
 export const securityAPI = {
   // Get security policies
-  getPolicies: async () => {
-    return await API_CONFIG.request('/security/policies')
+  getPolicies: async (): Promise<unknown> => {
+    return await API_CONFIG.request("/security/policies");
   },
 
   // Update security policy
-  updatePolicy: async (id: string, policyData: Record<string, any>) => {
+  updatePolicy: async (
+    id: string,
+    policyData: Record<string, unknown>,
+  ): Promise<unknown> => {
     return await API_CONFIG.request(`/security/policies/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(policyData)
-    })
+      method: "PUT",
+      body: JSON.stringify(policyData),
+    });
   },
 
   // Get vulnerabilities
-  getVulnerabilities: async (filters = {}) => {
-    const params = new URLSearchParams(filters)
-    return await API_CONFIG.request(`/security/vulnerabilities?${params}`)
+  getVulnerabilities: async (
+    filters: Record<string, string> = {} as Record<string, string>,
+  ): Promise<unknown> => {
+    const params = new URLSearchParams(filters);
+    return await API_CONFIG.request(`/security/vulnerabilities?${params}`);
   },
 
   // Update vulnerability status
-  updateVulnerability: async (id: string, status: string) => {
+  updateVulnerability: async (id: string, status: string): Promise<unknown> => {
     return await API_CONFIG.request(`/security/vulnerabilities/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status })
-    })
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
   },
 
   // Get security score
-  getSecurityScore: async () => {
-    return await API_CONFIG.request('/security/score')
+  getSecurityScore: async (): Promise<unknown> => {
+    return await API_CONFIG.request("/security/score");
   },
 
   // Run security scan
-  runSecurityScan: async () => {
-    const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+  runSecurityScan: async (): Promise<unknown> => {
+    const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
     const response = await fetch(`${base}/security/scan`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('hades-token')}`,
+        Authorization: `Bearer ${localStorage.getItem("hades-token")}`,
       },
-    })
-    
+    });
+
     if (!response.ok) {
-      throw new Error('Failed to run security scan')
+      throw new Error("Failed to run security scan");
     }
-    
-    return response.json()
+
+    return (await response.json()) as unknown;
   },
 
   // Get audit logs
-  getAuditLogs: async (filters = {}) => {
-    const params = new URLSearchParams(filters)
-    const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+  getAuditLogs: async (
+    filters: Record<string, string> = {} as Record<string, string>,
+  ): Promise<unknown> => {
+    const params = new URLSearchParams(filters);
+    const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
     const response = await fetch(`${base}/security/audit-logs?${params}`, {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('hades-token')}`,
+        Authorization: `Bearer ${localStorage.getItem("hades-token")}`,
       },
-    })
-    
+    });
+
     if (!response.ok) {
-      throw new Error('Failed to fetch audit logs')
+      throw new Error("Failed to fetch audit logs");
     }
-    
-    return response.json()
+
+    return (await response.json()) as unknown;
   },
-}
+};

@@ -1,0 +1,32 @@
+This PR implements the following changes (automated, low-risk):
+
+- Pure-Go kernel simulator: `os/hades-go-kernel` now includes a userspace kernel (`hades-kernel`) with an interactive shell and a small Supervisor for external services.
+  - Service manifest support (`services.json`) and automatic service registration.
+  - Health monitoring for services (HTTP health endpoint checks + restart).
+  - Shell commands to manage services: `service start|stop|status|health|list`.
+
+- Packaging: `os/go-os/package.sh` packages a pure-Go image (hades-kernel + optional hades-server + gobox).
+  - `gobox` added (`cmd/gobox`) as a tiny Go multi-call applet replacer for BusyBox functionality in pure-Go images.
+  - Default `services.json` is created by the packager when `hades-server` is present.
+
+- Buildroot/GRUB scaffolding: `os/hades-linux/scripts/*` and `os/hades-boot-kernel/scripts/*` added/updated to allow reproducible builds and ISO packaging.
+  - `build-rootfs.sh` (rebuild initramfs), `setup-buildroot.sh` (download/extract Buildroot), `build.sh` wrapper (gated long builds), `post-*` helpers.
+  - `os/hades-boot-kernel/scripts/build.sh` now creates a hybrid GRUB ISO and `run-qemu.sh` boots it in QEMU (tested locally).
+
+- CI: added smoke workflows for verification and the Go-kernel; added a manual OS full-build workflow (`.github/workflows/os-build.yml`) to run full Buildroot+ISO builds as a manual action.
+
+What I tested locally:
+- Built and ran `os/hades-go-kernel/hades-kernel` (shell, service supervisor, health monitor).
+- Packaged a pure-Go image (`os/go-os/hades-go-image.tar.gz`).
+- Re-built initramfs from `qemu-test/rootfs` and created a GRUB ISO; booted it under QEMU and validated the HADES banner + shell.
+
+Notes / Risks:
+- Full Buildroot/kernel builds are long-running and gated behind `ALLOW_LONG_BUILDS=1` or the manual workflow.
+- Some files (e.g., prebuilt binaries under `qemu-test`) are supplied for fast testing; full rebuilds will produce new artifacts.
+
+Next steps I can take automatically if you want:
+- Run the full Buildroot/kernel/GRUB ISO build locally (long: 30–120+ minutes).
+- Harden the production kernel config and strip debug flags, or create separate debug/production configs.
+- Add more unit tests and CI flows for the pure-Go kernel and supervision features.
+
+This PR was created automatically by the agent branch `improve/os-boot-kernel`. Please review and let me know if you want me to merge, run the full OS build, or make further changes.
