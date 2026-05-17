@@ -70,3 +70,29 @@ export type WSMessage = {
   data?: unknown;
   [key: string]: unknown;
 };
+
+// Security types
+export interface Policy {
+  id: number | string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  [key: string]: unknown;
+}
+
+export interface Vulnerability {
+  id: number | string;
+  title?: string;
+  severity?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface AuditLog {
+  id: number | string;
+  message?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+export type SecurityScore = number | { score: number; [key: string]: unknown };

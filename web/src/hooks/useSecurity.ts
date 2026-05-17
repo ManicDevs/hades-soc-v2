@@ -1,106 +1,124 @@
-import { useState, useEffect } from 'react'
-import { securityAPI } from '../api/security'
+import { useState, useEffect } from "react";
+import { securityAPI } from "../api/security";
+import type {
+  Policy,
+  Vulnerability,
+  AuditLog,
+  SecurityScore,
+} from "../types/models";
 
 export const useSecurity = () => {
-  const [policies, setPolicies] = useState<any[]>([])
-  const [vulnerabilities, setVulnerabilities] = useState<any[]>([])
-  const [securityScore, setSecurityScore] = useState<any>(null)
-  const [auditLogs, setAuditLogs] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
+  const [securityScore, setSecurityScore] = useState<SecurityScore | null>(
+    null,
+  );
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSecurityData()
-    
+    fetchSecurityData();
+
     // Set up periodic updates for security score
     const interval = setInterval(() => {
-      fetchSecurityScore()
-    }, 30000)
+      fetchSecurityScore();
+    }, 30000);
 
-    return () => clearInterval(interval)
-  }, [])
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchSecurityData = async () => {
-    console.log('fetchSecurityData starting')
-    setLoading(true)
-    setError(null)
-    
+    console.log("fetchSecurityData starting");
+    setLoading(true);
+    setError(null);
+
     try {
-      console.log('Calling security APIs...')
+      console.log("Calling security APIs...");
       const [policiesData, vulnerabilitiesData, scoreData] = await Promise.all([
         securityAPI.getPolicies(),
         securityAPI.getVulnerabilities(),
-        securityAPI.getSecurityScore()
-      ])
-      
-      console.log('Security API responses:', { policiesData, vulnerabilitiesData, scoreData })
-      
-      setPolicies(policiesData)
-      setVulnerabilities(vulnerabilitiesData)
-      setSecurityScore(scoreData)
-    } catch (error) {
-      console.error('Security data fetch error:', error)
-      setError('Failed to fetch security data')
+        securityAPI.getSecurityScore(),
+      ]);
+
+      console.log("Security API responses:", {
+        policiesData,
+        vulnerabilitiesData,
+        scoreData,
+      });
+
+      setPolicies(policiesData as Policy[]);
+      setVulnerabilities(vulnerabilitiesData as Vulnerability[]);
+      setSecurityScore(scoreData as SecurityScore);
+    } catch (err) {
+      console.error("Security data fetch error:", err);
+      setError("Failed to fetch security data");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const fetchSecurityScore = async () => {
     try {
-      const scoreData = await securityAPI.getSecurityScore()
-      setSecurityScore(scoreData)
-    } catch (error) {
-      console.error('Security score fetch error:', error)
+      const scoreData = await securityAPI.getSecurityScore();
+      setSecurityScore(scoreData as SecurityScore);
+    } catch (err) {
+      console.error("Security score fetch error:", err);
     }
-  }
+  };
 
-  const fetchAuditLogs = async (filters = {}) => {
+  const fetchAuditLogs = async (filters: Record<string, string> = {}) => {
     try {
-      const logsData = await securityAPI.getAuditLogs(filters)
-      setAuditLogs(logsData)
-    } catch (error) {
-      setError('Failed to fetch audit logs')
-      console.error('Audit logs fetch error:', error)
+      const logsData = await securityAPI.getAuditLogs(filters);
+      setAuditLogs(logsData as AuditLog[]);
+    } catch (err) {
+      setError("Failed to fetch audit logs");
+      console.error("Audit logs fetch error:", err);
     }
-  }
+  };
 
-  const updatePolicy = async (id: any, policyData: any) => {
+  const updatePolicy = async (
+    id: string | number,
+    policyData: Partial<Policy>,
+  ) => {
     try {
-      await securityAPI.updatePolicy(id, policyData)
-      await fetchSecurityData()
-    } catch (error) {
-      setError('Failed to update security policy')
-      throw error
+      await securityAPI.updatePolicy(
+        String(id),
+        policyData as Record<string, unknown>,
+      );
+      await fetchSecurityData();
+    } catch (err) {
+      setError("Failed to update security policy");
+      throw err;
     }
-  }
+  };
 
-  const updateVulnerability = async (id: any, status: any) => {
+  const updateVulnerability = async (id: string | number, status: string) => {
     try {
-      await securityAPI.updateVulnerability(id, status)
-      await fetchSecurityData()
-    } catch (error) {
-      setError('Failed to update vulnerability')
-      throw error
+      await securityAPI.updateVulnerability(String(id), status);
+      await fetchSecurityData();
+    } catch (err) {
+      setError("Failed to update vulnerability");
+      throw err;
     }
-  }
+  };
 
   const runSecurityScan = async () => {
     try {
-      await securityAPI.runSecurityScan()
+      await securityAPI.runSecurityScan();
       // Refresh data after scan
       setTimeout(() => {
-        fetchSecurityData()
-      }, 2000)
-    } catch (error) {
-      setError('Failed to run security scan')
-      throw error
+        fetchSecurityData();
+      }, 2000);
+    } catch (err) {
+      setError("Failed to run security scan");
+      throw err;
     }
-  }
+  };
 
   const refreshData = () => {
-    fetchSecurityData()
-  }
+    fetchSecurityData();
+  };
 
   return {
     policies,
@@ -113,8 +131,8 @@ export const useSecurity = () => {
     updateVulnerability,
     runSecurityScan,
     fetchAuditLogs,
-    refreshData
-  }
-}
+    refreshData,
+  };
+};
 
-export default useSecurity
+export default useSecurity;
