@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[pre-commit] running gofmt on selected directories"
+if command -v go >/dev/null 2>&1; then
+  gofmt -s -w cmd internal pkg || true
+else
+  echo "go not found, skipping gofmt"
+fi
+
+# Frontend lint auto-fix (non-fatal)
+if command -v npm >/dev/null 2>&1; then
+  echo "[pre-commit] running eslint --fix for web"
+  npm --prefix web run lint --silent -- --fix || true
+else
+  echo "npm not found, skipping frontend fixes"
+fi
+
+# Run go vet (non-fatal)
+if command -v go >/dev/null 2>&1; then
+  echo "[pre-commit] running go vet (non-fatal)"
+  go vet ./cmd/... ./internal/... ./pkg/... || true
+fi
+
+echo "[pre-commit] done"
