@@ -63,3 +63,10 @@ export interface ThreatStats {
   by_status: Record<string, number>;
   by_type: Record<string, number>;
 }
+
+// Websocket messages
+export type WSMessage = {
+  type?: string;
+  data?: unknown;
+  [key: string]: unknown;
+};
