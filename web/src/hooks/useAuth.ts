@@ -1,264 +1,275 @@
-import React, { useState, useContext } from 'react'
+import React, { useState, useContext } from "react";
 
-import { authAPI } from '../api/auth'
-
-// Type definitions
-interface User {
-  id: number | string
-  username: string
-  email: string
-  role: string
-  permissions: string[]
-}
+import { authAPI } from "../api/auth";
+import type { User, LoginCredentials, AuthResponse } from "../types/models";
 
 interface AuthContextType {
-  user: User | null
-  isAuthenticated: boolean
-  loading: boolean
-  login: (credentials: { username: string; password: string }) => Promise<void>
-  logout: () => Promise<void>
-  setUser: (user: User | null) => void
-  setIsAuthenticated: (auth: boolean) => void
-  setLoading: (loading: boolean) => void
-  setError: (error: string | null) => void
+  user: User | null;
+  isAuthenticated: boolean;
+  loading: boolean;
+  error: string | null;
+  login: (credentials: LoginCredentials) => Promise<AuthResponse | unknown>;
+  logout: () => Promise<void>;
+  refreshData: () => Promise<AuthResponse | unknown>;
+  setUser: (user: User | null) => void;
+  setIsAuthenticated: (auth: boolean) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
 }
 
 // Global window type declarations
 declare global {
   interface Window {
-    hadesToken: string | null
-    hadesUser: User | null
-    hadesRole: string | null
-    hadesEnvironment: string | null
+    hadesToken: string | null;
+    hadesUser: User | string | null;
+    hadesRole: string | null;
+    hadesEnvironment: string | null;
   }
-  
+
   interface ImportMetaEnv {
-    VITE_API_BASE_URL: string
-    VITE_WS_BASE_URL?: string
+    VITE_API_BASE_URL: string;
+    VITE_WS_BASE_URL?: string;
   }
-  
+
   interface ImportMeta {
-    env: ImportMetaEnv
+    env: ImportMetaEnv;
   }
 }
 
-const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
+const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error("useAuth must be used within an AuthProvider");
   }
-  
-  return context
-}
+
+  return context;
+};
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Check for existing session on mount
   React.useEffect(() => {
     (async () => {
-      const token = window.hadesToken || null
-      const user = window.hadesUser || null
-      const environment = window.hadesEnvironment || null
-      
+      const token = window.hadesToken || null;
+      const rawUser = window.hadesUser || null;
+      const environment = window.hadesEnvironment || null;
+
       // Check if we're in development environment
-      const isDevelopment = window.location.hostname === 'localhost' ||
-                          window.location.hostname === '127.0.0.1' ||
-                          window.location.hostname === '192.168.0.2' ||
-                          window.location.hostname.includes('dev') ||
-                          window.location.hostname.includes('test') ||
-                          window.location.hostname.includes('qa') ||
-                          window.location.hostname.includes('staging')
-      
-      if (token && user) {
+      const hostname = window.location.hostname || "";
+      const isDevelopment =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "192.168.0.2" ||
+        hostname.includes("dev") ||
+        hostname.includes("test") ||
+        hostname.includes("qa") ||
+        hostname.includes("staging");
+
+      if (token && rawUser) {
         // We have a stored session, restore it
-        const parsedUser = typeof user === 'string' ? JSON.parse(user) : user
-        setUser(parsedUser)
-        setIsAuthenticated(true)
-        
+        const parsedUser =
+          typeof rawUser === "string" ? JSON.parse(rawUser) : rawUser;
+        setUser(parsedUser as User);
+        setIsAuthenticated(true);
+
         if (environment) {
           // Session restored silently
         }
       } else if (isDevelopment) {
         // For development, get a real JWT token from backend
-        const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+        const apiUrl =
+          (import.meta as any).env.VITE_API_BASE_URL || "http://localhost:8080";
         try {
           const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              username: 'admin',
-              password: 'admin123'
-            })
-          })
-          
+              username: "admin",
+              password: "admin123",
+            }),
+          });
+
           if (response.ok) {
-            const data = await response.json()
-            const defaultUser = data.data.user
-            const realToken = data.data.token
-            
-            setUser(defaultUser)
-            setIsAuthenticated(true)
-            window.hadesToken = realToken
-            window.hadesUser = defaultUser
-            window.hadesRole = 'Administrator'
-            window.hadesEnvironment = 'development'
-            
+            const data = await response.json();
+            const defaultUser = data.data?.user;
+            const realToken = data.data?.token;
+
+            setUser(defaultUser);
+            setIsAuthenticated(true);
+            window.hadesToken = realToken;
+            window.hadesUser = defaultUser;
+            window.hadesRole = "Administrator";
+            window.hadesEnvironment = "development";
+
             // Development session created with real JWT token
           } else {
             // Fallback to fake token if backend is not available
-            const defaultUser = {
+            const defaultUser: User = {
               id: 1,
-              username: 'admin',
-              email: 'admin@hades-toolkit.com',
-              role: 'Administrator',
-              permissions: ['read', 'write', 'admin']
-            }
-            
-            setUser(defaultUser)
-            setIsAuthenticated(true)
-            window.hadesToken = 'dev-token-' + Date.now()
-            window.hadesUser = defaultUser
-            window.hadesRole = 'Administrator'
-            window.hadesEnvironment = 'development'
-            
+              username: "admin",
+              email: "admin@hades-toolkit.com",
+              role: "Administrator",
+              permissions: ["read", "write", "admin"],
+            };
+
+            setUser(defaultUser);
+            setIsAuthenticated(true);
+            window.hadesToken = "dev-token-" + Date.now();
+            window.hadesUser = defaultUser;
+            window.hadesRole = "Administrator";
+            window.hadesEnvironment = "development";
+
             // Fallback development session created
           }
-        } catch (error) {
-          console.error('Failed to get dev token:', error)
+        } catch (err) {
+          console.error("Failed to get dev token:", err);
           // Fallback to fake token
-          const defaultUser = {
+          const defaultUser: User = {
             id: 1,
-            username: 'admin',
-            email: 'admin@hades-toolkit.com',
-            role: 'Administrator',
-            permissions: ['read', 'write', 'admin']
-          }
-          
-          setUser(defaultUser)
-          setIsAuthenticated(true)
-          window.hadesToken = 'dev-token-' + Date.now()
-          window.hadesUser = defaultUser
-          window.hadesRole = 'Administrator'
-          window.hadesEnvironment = 'development'
-          
+            username: "admin",
+            email: "admin@hades-toolkit.com",
+            role: "Administrator",
+            permissions: ["read", "write", "admin"],
+          };
+
+          setUser(defaultUser);
+          setIsAuthenticated(true);
+          window.hadesToken = "dev-token-" + Date.now();
+          window.hadesUser = defaultUser;
+          window.hadesRole = "Administrator";
+          window.hadesEnvironment = "development";
+
           // Fallback development session created
         }
       }
-      
-      setLoading(false)
-    })()
-  }, [])
 
-  const login = async (credentials: any) => {
-    setLoading(true)
-    setError(null)
-    
+      setLoading(false);
+    })();
+  }, []);
+
+  type LoginCredentialsLocal = LoginCredentials;
+
+  const login = async (
+    credentials: LoginCredentialsLocal,
+  ): Promise<AuthResponse | unknown> => {
+    setLoading(true);
+    setError(null);
+
     try {
       // Check if this is a development environment login with role-based data
-      const isDevelopment = window.location.hostname === 'localhost' ||
-                           window.location.hostname === '127.0.0.1' ||
-                           window.location.hostname.includes('dev') ||
-                           window.location.hostname.includes('test') ||
-                           window.location.hostname.includes('qa') ||
-                           window.location.hostname.includes('staging')
-      
+      const hostname = window.location.hostname || "";
+      const isDevelopment =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname.includes("dev") ||
+        hostname.includes("test") ||
+        hostname.includes("qa") ||
+        hostname.includes("staging");
+
       if (isDevelopment && credentials.user && credentials.token) {
         // This is a development login with realistic data
-        const response = credentials
-        
+        const response = credentials as AuthResponse;
+
         // Store all session data in secure memory
-        window.hadesToken = response.token
-        window.hadesUser = response.user
-        window.hadesRole = credentials.role || 'user'
-        window.hadesEnvironment = response.user.environment || 'development'
-        
-        setUser(response.user)
-        setIsAuthenticated(true)
-        
-        return response
+        window.hadesToken = response.token as string;
+        window.hadesUser = response.user as User;
+        window.hadesRole = credentials.role || "user";
+        window.hadesEnvironment =
+          (response.user as any)?.environment || "development";
+
+        setUser(response.user as User);
+        setIsAuthenticated(true);
+
+        return response;
       } else {
         // Production authentication (or fallback)
         const loginCredentials = {
           ...credentials,
-          role: credentials.role || 'user'
-        }
-        
-        const response = await authAPI.login(loginCredentials)
-        
-        // Store token in secure memory
-        window.hadesToken = response.token
-        window.hadesUser = response.user
-        window.hadesRole = credentials.role
-        
-        setUser(response.user)
-        setIsAuthenticated(true)
-        
-        return response
-      }
-    } catch (error) {
-      setError('Invalid credentials. Please try again.')
-      throw error
-    }
-  }
+          role: (credentials.role as string) || "user",
+        };
 
-  const logout = async () => {
-    setLoading(true)
-    
+        const response = (await authAPI.login(
+          loginCredentials as { username: string; password: string },
+        )) as AuthResponse;
+
+        // Store token in secure memory
+        window.hadesToken = response.token as string;
+        window.hadesUser = response.user as User;
+        window.hadesRole = credentials.role as string;
+
+        setUser(response.user as User);
+        setIsAuthenticated(true);
+
+        return response;
+      }
+    } catch (err) {
+      setError("Invalid credentials. Please try again.");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = async (): Promise<void> => {
+    setLoading(true);
+
     try {
       // Call logout API if available (only in production)
-      const isDevelopment = window.location.hostname === 'localhost' ||
-                           window.location.hostname === '127.0.0.1' ||
-                           window.location.hostname.includes('dev') ||
-                           window.location.hostname.includes('test') ||
-                           window.location.hostname.includes('qa') ||
-                           window.location.hostname.includes('staging')
-      
+      const hostname = window.location.hostname || "";
+      const isDevelopment =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname.includes("dev") ||
+        hostname.includes("test") ||
+        hostname.includes("qa") ||
+        hostname.includes("staging");
+
       if (!isDevelopment) {
-        await authAPI.logout()
+        await authAPI.logout();
       }
-    } catch (error) {
-      console.error('Logout error:', error)
+    } catch (err) {
+      console.error("Logout error:", err);
     } finally {
       // Clear secure memory and state
-      window.hadesToken = null
-      window.hadesUser = null
-      window.hadesRole = null
-      window.hadesEnvironment = null
-      
+      window.hadesToken = null;
+      window.hadesUser = null;
+      window.hadesRole = null;
+      window.hadesEnvironment = null;
+
       // Clear authentication state
-      setUser(null)
-      setIsAuthenticated(false)
-      setLoading(false)
-      
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+
       // Redirect to login page
-      window.location.replace('/login')
+      window.location.replace("/login");
     }
-  }
+  };
 
-  const refreshToken = async () => {
+  const refreshToken = async (): Promise<AuthResponse | unknown> => {
     try {
-      const response = await authAPI.refreshToken()
-      
-      // Update token in secure memory
-      window.hadesToken = response.token
-      
-      return response
-    } catch (error) {
-      // Refresh failed, logout user
-      await logout()
-      throw error
-    }
-  }
+      const response = (await authAPI.refreshToken()) as AuthResponse;
 
-  const value = {
+      // Update token in secure memory
+      window.hadesToken = response.token as string;
+
+      return response;
+    } catch (err) {
+      // Refresh failed, logout user
+      await logout();
+      throw err;
+    }
+  };
+
+  const value: AuthContextType = {
     user,
     isAuthenticated,
     loading,
@@ -270,13 +281,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsAuthenticated,
     setLoading,
     setError,
-  }
+  };
 
-  return React.createElement(
-    AuthContext.Provider,
-    { value: value },
-    children
-  )
-}
+  return React.createElement(AuthContext.Provider, { value: value }, children);
+};
 
-export default useAuth
+export default useAuth;
