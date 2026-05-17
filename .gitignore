@@ -160,3 +160,8 @@ web/src/assets/admin_portal_keys.pem
 reports/daily_report_*.md
 reports/simulation_report_*.json
 !reports/daily_report_template.md
+
+# Buildroot and generated outputs
+os/hades-linux/scripts/**/output/
+os/hades-linux/scripts/**/buildroot-*/dl/
+build/run/

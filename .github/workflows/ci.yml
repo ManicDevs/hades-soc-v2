@@ -1,320 +1,37 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-  release:
-    types: [ published ]
-
-env:
-  GO_VERSION: '1.21'
-  DOCKER_REGISTRY: ghcr.io
-  DOCKER_IMAGE: hades-v2
+    branches: [main]
 
 jobs:
   test:
-    name: Test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
 
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
-    - name: Download dependencies
-      run: go mod download
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
 
-    - name: Verify dependencies
-      run: go mod verify
+      - name: Install web dependencies
+        run: npm --prefix web ci
 
-    - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
-
-    - name: Run benchmarks
-      run: go test -bench=. -benchmem ./... | tee benchmark.txt
-
-    - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
-      with:
-        name: benchmark-results
-        path: benchmark.txt
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
-
-    - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
-      with:
-        args: '-no-fail -fmt sarif -out results.sarif ./...'
-
-    - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: results.sarif
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-
-    - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: 'trivy-results.sarif'
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
-
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v3
-      with:
-        version: latest
-        args: --timeout=5m
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: [test, security, lint]
-    strategy:
-      matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
-
-    - name: Build binary
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-        CGO_ENABLED: 0
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/}
-        if [[ $VERSION == refs/heads/* ]]; then
-          VERSION=$(git rev-parse --short HEAD)
-        fi
-        go build -ldflags "-X main.version=$VERSION -X main.buildTime=$(date -u '+%Y-%m-%d_%H:%M:%S')" -o hades-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} ./cmd/hades
-
-    - name: Upload binary
-      uses: actions/upload-artifact@v3
-      with:
-        name: hades-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: hades-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-
-  docker:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: github.event_name != 'pull_request'
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.DOCKER_REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [docker]
-    if: github.event_name != 'pull_request'
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: hades_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Wait for services
-      run: |
-        timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
-        timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
-
-    - name: Run integration tests
-      env:
-        HADES_DB_TYPE: postgres
-        HADES_DB_HOST: localhost
-        HADES_DB_PORT: 5432
-        HADES_DB_NAME: hades_test
-        HADES_DB_USER: postgres
-        HADES_DB_PASSWORD: postgres
-        HADES_REDIS_URL: redis://localhost:6379
-      run: |
-        go test -v -tags=integration ./tests/integration/...
-
-    - name: Upload integration test results
-      uses: actions/upload-artifact@v3
-      if: failure()
-      with:
-        name: integration-test-results
-        path: tests/integration/results/
-
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    needs: [integration-test]
-    if: github.event_name == 'release'
-    environment: production
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Deploy to production
-      run: |
-        echo "Deploying to production..."
-        # Add deployment commands here
-        # For example: kubectl apply -f k8s/
-        # Or: docker-compose -f docker-compose.prod.yml up -d
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: [build, docker]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download all artifacts
-      uses: actions/download-artifact@v3
-
-    - name: Create release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          hades-*-*
-          LICENSE
-          README.md
-          CHANGELOG.md
-        draft: false
-        prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  notify:
-    name: Notify
-    runs-on: ubuntu-latest
-    needs: [test, security, lint, build, docker]
-    if: always()
-    steps:
-    - name: Notify on success
-      if: ${{ needs.test.result == 'success' && needs.security.result == 'success' && needs.lint.result == 'success' && needs.build.result == 'success' }}
-      run: |
-        echo "✅ All checks passed successfully!"
-        # Add notification logic here (Slack, Teams, etc.)
-
-    - name: Notify on failure
-      if: ${{ needs.test.result == 'failure' || needs.security.result == 'failure' || needs.lint.result == 'failure' || needs.build.result == 'failure' }}
-      run: |
-        echo "❌ Some checks failed!"
-        # Add failure notification logic here
+      - name: Run repo checks
+        run: bash scripts/ci/clean-and-test.sh
